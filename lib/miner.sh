@@ -7,14 +7,10 @@ worker_name() {
   local idfile='/etc/meowkit/worker-id'
   local id=1
   install -d -m 750 "$MEOWKIT_DIR"
-  # Keep the same pool identity across repairs and reinstalls. Allocate a new
-  # sequential worker number only when this host has no saved identity.
   if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then
     id=$(<"$idfile")
   else
-    if [[ -f $idfile ]] || [[ -f "$MEOWKIT_DIR/config.json" ]]; then
-      id=1
-    fi
+    if [[ -f $idfile ]] || [[ -f "$MEOWKIT_DIR/config.json" ]]; then id=1; fi
     printf '%s\n' "$id" > "$idfile"
     chmod 600 "$idfile"
   fi
@@ -66,7 +62,9 @@ EOFJSON
   chmod 640 "$MEOWKIT_DIR/config.json"
   cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
 #!/bin/sh
-/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip -o /dev/null
+set -eu
+response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
+printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)'
 EOFCHK
   chmod 755 /usr/local/sbin/meowkit-tor-check
 
@@ -93,8 +91,9 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${MEOWKIT_DIR}
-StandardOutput=null
-StandardError=null
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meowkit
 
 [Install]
 WantedBy=multi-user.target
@@ -116,5 +115,5 @@ run_install() {
   install_xmrig
   write_configuration
   info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} CPU threads."
-  info 'No persistent MeowKit application logs are configured. Use systemctl status meowkit.service for service state.'
+  info 'Service output is available through: journalctl -u meowkit.service.'
 }
