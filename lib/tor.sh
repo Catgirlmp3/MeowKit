@@ -15,21 +15,26 @@ bootstrap_tor() {
   install -d -m 755 /etc/tor
   local torrc='/etc/tor/torrc'
   [[ -f $torrc ]] || touch "$torrc"
-  cp -a "$torrc" "$torrc.meowkit-backup.$(date +%Y%m%d%H%M%S)"
+  local backup="$torrc.meowkit-backup.$(date +%Y%m%d%H%M%S)"
+  cp -a "$torrc" "$backup" || fail 'Could not back up the existing Tor configuration.'
   if ! grep -Eq '^[[:space:]]*SocksPort[[:space:]]+127\.0\.0\.1:9050([[:space:]]|$)' "$torrc"; then
     printf '\n# MeowKit managed SOCKS5 listener\nSocksPort 127.0.0.1:9050\n' >> "$torrc"
   fi
-  tor --verify-config -f "$torrc" >/dev/null 2>&1 || fail 'Tor configuration validation failed. Review /etc/tor/torrc; the previous version was backed up.'
+  if ! tor --verify-config -f "$torrc" >/dev/null 2>&1; then
+    cp -a "$backup" "$torrc" || printf 'Warning: automatic Tor configuration rollback failed; backup: %s\n' "$backup" >&2
+    fail 'Tor configuration validation failed. The previous configuration was restored where possible.'
+  fi
 
-  if systemctl list-unit-files tor.service --no-legend 2>/dev/null | grep -q '^tor\.service'; then
-    systemctl enable tor.service >/dev/null 2>&1 || fail 'Could not enable tor.service at boot.'
-    systemctl restart tor.service || fail 'Could not start/restart tor.service.'
-  elif systemctl list-unit-files tor@default.service --no-legend 2>/dev/null | grep -q '^tor@default\.service'; then
-    systemctl enable tor@default.service >/dev/null 2>&1 || fail 'Could not enable tor@default.service.'
-    systemctl restart tor@default.service || fail 'Could not start tor@default.service.'
+  # Prefer the instance unit when both units are installed.
+  if systemctl list-unit-files tor@default.service --no-legend 2>/dev/null | grep -q '^tor@default\.service'; then
+    TOR_UNIT='tor@default.service'
+  elif systemctl list-unit-files tor.service --no-legend 2>/dev/null | grep -q '^tor\.service'; then
+    TOR_UNIT='tor.service'
   else
     fail 'No supported Tor systemd unit was found.'
   fi
+  systemctl enable "$TOR_UNIT" >/dev/null 2>&1 || fail "Could not enable $TOR_UNIT at boot."
+  systemctl restart "$TOR_UNIT" || fail "Could not start/restart $TOR_UNIT."
 
   local ok=0
   for _ in {1..18}; do

@@ -6,9 +6,18 @@ XMRIG_VERSION='6.26.0'
 worker_name() {
   local idfile='/etc/meowkit/worker-id'
   local id=1
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then id=$(( $(cat "$idfile") + 1 )); fi
-  printf '%s\n' "$id" > "$idfile"
-  chmod 600 "$idfile"
+  install -d -m 750 "$MEOWKIT_DIR"
+  # Keep the same pool identity across repairs and reinstalls. Allocate a new
+  # sequential worker number only when this host has no saved identity.
+  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then
+    id=$(<"$idfile")
+  else
+    if [[ -f $idfile ]] || [[ -f "$MEOWKIT_DIR/config.json" ]]; then
+      id=1
+    fi
+    printf '%s\n' "$id" > "$idfile"
+    chmod 600 "$idfile"
+  fi
   RIG_NAME="meow$id"
 }
 

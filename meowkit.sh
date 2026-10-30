@@ -8,16 +8,18 @@ source "$ROOT/lib/miner.sh"
 
 MODE=quiet
 ACTION=install
+RAM_PERCENT=${RAM_PERCENT:-75}
 
 usage() {
   cat <<'TXT'
 MeowKit
-Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install]
+Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install|--repair]
 
   --quiet     Minimal installer output (default)
   --verbose   Show detailed progress
   --status    Show service and Tor status; does not display logs
   --install   Run the installer
+  --repair    Reconcile installed files and restart the service
   --help      Show this help
 TXT
 }
@@ -40,17 +42,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if [[ $ACTION == status ]]; then
-  printf 'MeowKit service: '
-  if systemctl is-active --quiet meowkit.service; then printf 'active\n'; else printf 'inactive\n'; fi
-  printf 'Enabled at boot: '
-  if systemctl is-enabled --quiet meowkit.service 2>/dev/null; then printf 'yes\n'; else printf 'no\n'; fi
-  printf 'Tor: '
-  tor_unit=''
-  if systemctl show -p LoadState --value tor@default.service 2>/dev/null | grep -qx loaded; then tor_unit=tor@default.service; elif systemctl show -p LoadState --value tor.service 2>/dev/null | grep -qx loaded; then tor_unit=tor.service; fi
-  if [[ -n $tor_unit ]] && systemctl is-active --quiet "$tor_unit"; then printf 'active (%s)\n' "$tor_unit"; else printf 'not active\n'; fi
-  printf 'SOCKS5: '
-  if curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip >/dev/null 2>&1; then printf 'reachable through Tor\n'; else printf 'unavailable\n'; fi
-  exit 0
+  "$ROOT/commands/status.sh"
+  exit $?
 fi
 
 show_menu() {
@@ -68,7 +61,7 @@ show_menu() {
       Choose resource limits and optimisations
 
   [3] Repair installation
-      Recheck Tor, configuration and service
+      Reconcile configuration and restart the service
 
   [4] Uninstall MeowKit
       Remove MeowKit components
@@ -83,8 +76,14 @@ if [[ -t 0 && $MODE == quiet ]]; then
   read -r -p '  Choose [1-5]: ' choice
   case "$choice" in
     1) ;;
-    2) read -r -p '  CPU allocation percentage [75]: ' CUSTOM_CPU; CUSTOM_CPU=${CUSTOM_CPU:-75}; [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=90)) || fail 'Custom CPU percentage must be 10–90.'; CPU_PERCENT=$CUSTOM_CPU ;;
-    3) ;;
+    2)
+      read -r -p '  CPU allocation percentage [75]: ' CUSTOM_CPU; CUSTOM_CPU=${CUSTOM_CPU:-75}
+      [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=90)) || fail 'Custom CPU percentage must be 10–90.'
+      read -r -p '  Huge-page RAM budget percentage [75]: ' CUSTOM_RAM; CUSTOM_RAM=${CUSTOM_RAM:-75}
+      [[ $CUSTOM_RAM =~ ^[0-9]+$ ]] && ((CUSTOM_RAM>=10 && CUSTOM_RAM<=90)) || fail 'RAM percentage must be 10–90.'
+      CPU_PERCENT=$CUSTOM_CPU; RAM_PERCENT=$CUSTOM_RAM
+      ;;
+    3) ACTION=repair ;;
     4) read -r -p '  Remove MeowKit? [y/N]: ' confirm; [[ ${confirm,,} == y ]] || exit 0; "$ROOT/commands/uninstall.sh"; exit $? ;;
     5) exit 0 ;;
     *) fail 'Invalid menu selection.' ;;
@@ -93,6 +92,9 @@ if [[ -t 0 && $MODE == quiet ]]; then
   [[ ${selected_mode,,} == v ]] && MODE=verbose
 fi
 
+if [[ $ACTION == repair ]]; then
+  info 'Repair mode: existing worker identity is preserved; managed configuration and service will be reconciled.'
+fi
 run_install
 
 if [[ -t 1 ]]; then
