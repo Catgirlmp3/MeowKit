@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-MEOWKIT_VERSION='2.0.3'
+MEOWKIT_VERSION='2.0.4'
 MEOWKIT_DIR='/etc/meowkit'
 MEOWKIT_BIN='/usr/local/bin/meowkit-xmrig'
 MEOWKIT_SERVICE='/etc/systemd/system/meowkit.service'
@@ -7,6 +7,7 @@ WORKDIR=''
 CURRENT_STEP='startup'
 MODE=${MODE:-quiet}
 CPU_PERCENT=${CPU_PERCENT:-75}
+CPU_PERCENT_EXPLICIT=${CPU_PERCENT_EXPLICIT:-0}
 
 log() { [[ ${MODE:-quiet} == verbose ]] && printf '[MeowKit] %s\n' "$*"; return 0; }
 info() { printf '[+] %s\n' "$*"; }
@@ -26,7 +27,5 @@ trap 'handle_unexpected_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 trap on_exit EXIT
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Required command is missing: $1"; }
-
 begin_step() { CURRENT_STEP=$1; log "$1"; }
-
 make_workdir() { WORKDIR=$(mktemp -d /tmp/meowkit.XXXXXX) || fail 'Could not create temporary working directory.'; chmod 700 "$WORKDIR"; }
