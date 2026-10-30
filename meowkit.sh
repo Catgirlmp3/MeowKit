@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+# Preserve whether CPU_PERCENT was supplied by the caller before common.sh
+# applies its default. Proxmox tuning must never override an explicit choice.
+CPU_PERCENT_EXPLICIT=0
+[[ ${CPU_PERCENT+x} ]] && CPU_PERCENT_EXPLICIT=1
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT/lib/common.sh"
 source "$ROOT/lib/tor.sh"
@@ -30,8 +36,9 @@ while (($#)); do
     --verbose) MODE=verbose ;;
     --status) ACTION=status ;;
     --install) ACTION=install ;;
+    --repair) ACTION=repair ;;
     --help|-h) usage; exit 0 ;;
-    *) printf 'Unknown option: %s\n' "$1"; usage; exit 2 ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
   esac
   shift
 done
@@ -81,7 +88,7 @@ if [[ -t 0 && $MODE == quiet ]]; then
       [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=90)) || fail 'Custom CPU percentage must be 10–90.'
       read -r -p '  Huge-page RAM budget percentage [75]: ' CUSTOM_RAM; CUSTOM_RAM=${CUSTOM_RAM:-75}
       [[ $CUSTOM_RAM =~ ^[0-9]+$ ]] && ((CUSTOM_RAM>=10 && CUSTOM_RAM<=90)) || fail 'RAM percentage must be 10–90.'
-      CPU_PERCENT=$CUSTOM_CPU; RAM_PERCENT=$CUSTOM_RAM
+      CPU_PERCENT=$CUSTOM_CPU; CPU_PERCENT_EXPLICIT=1; RAM_PERCENT=$CUSTOM_RAM
       ;;
     3) ACTION=repair ;;
     4) read -r -p '  Remove MeowKit? [y/N]: ' confirm; [[ ${confirm,,} == y ]] || exit 0; "$ROOT/commands/uninstall.sh"; exit $? ;;
