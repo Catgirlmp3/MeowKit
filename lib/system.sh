@@ -10,11 +10,14 @@ detect_resources() {
   local guests=0
   if command -v qm >/dev/null 2>&1; then guests=$((guests + $(qm list 2>/dev/null | awk 'NR>1 && $3=="running" {n++} END{print n+0}'))); fi
   if command -v pct >/dev/null 2>&1; then guests=$((guests + $(pct list 2>/dev/null | awk 'NR>1 && $2=="running" {n++} END{print n+0}'))); fi
+  # CPU allocation and huge-page RAM allocation are independent settings.
+  # Proxmox guests may reduce miner CPU use, but must not shrink the RAM budget.
+  RAM_PERCENT=${RAM_PERCENT:-75}
+  [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 10 && RAM_PERCENT <= 90)) || fail 'Huge-page RAM percentage must be between 10 and 90.'
   if ((guests > 0)) && [[ ${CPU_PERCENT:-75} == 75 ]]; then CPU_PERCENT=50; fi
-  RAM_PERCENT=$CPU_PERCENT
   THREADS=$((TOTAL_THREADS * CPU_PERCENT / 100)); ((THREADS > 0)) || THREADS=1
   RAM_BUDGET_MB=$((TOTAL_RAM_MB * RAM_PERCENT / 100))
-  log "CPU threads: $TOTAL_THREADS; miner threads: $THREADS; RAM: ${TOTAL_RAM_MB} MiB; huge-page budget: ${RAM_BUDGET_MB} MiB; running guests: $guests"
+  log "CPU threads: $TOTAL_THREADS; miner threads: $THREADS; RAM: ${TOTAL_RAM_MB} MiB; huge-page RAM budget: ${RAM_BUDGET_MB} MiB (${RAM_PERCENT}%); running guests: $guests"
 }
 
 configure_hugepages() {

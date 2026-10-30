@@ -1,4 +1,4 @@
-# MeowKit 2.0.0
+# MeowKit 2.0.3
 
 A modular Debian/Ubuntu/Proxmox installer for XMRig + MoneroOcean using a local Tor SOCKS5 proxy.
 
@@ -23,6 +23,8 @@ Quiet output is the default. Use `--verbose` for progress details and `--status`
 
 ## Service
 
+The miner service is enabled automatically at installation and starts at boot. It restarts after an unexpected exit. To stop it, use `sudo systemctl disable --now meowkit.service`.
+
 - Unit: `meowkit.service`
 - Description: `MeowKit Background Workload`
 - Tor is a required dependency; the installer detects the active distribution unit (`tor@default.service` or `tor.service`) and binds the miner to that exact unit.
@@ -36,7 +38,7 @@ The installer dynamically attempts to reserve 1 GiB pages first and 2 MiB pages 
 ## Safety notes
 
 - The configured wallet is the public wallet address supplied by the project owner.
-- `/etc/tor/torrc` is backed up before editing. Uninstall removes only the MeowKit-managed SOCKS listener stanza and preserves unrelated Tor settings.
+- `/etc/tor/torrc` is backed up before editing. If validation fails, the previous configuration is restored. Uninstall removes only the MeowKit-managed SOCKS listener stanza and preserves unrelated Tor settings.
 - Existing Tor gateway and SSH settings are not intentionally modified.
 - Uninstall removes MeowKit files and service only; it does not uninstall Tor or remove unrelated settings.
 - This initial release targets x86_64 Debian/Ubuntu/Proxmox systems.
