@@ -10,7 +10,7 @@ Run as root:
 sudo ./meowkit.sh
 ```
 
-Quiet output is the default. Use `--verbose` for progress details and `--status` to inspect service state without displaying logs.
+Quiet output is the default. Use `--verbose` for progress details and `--status` to inspect service state without displaying logs. Error screens remain visible for about 15 seconds before the terminal is cleared.
 
 ## Network behaviour
 
@@ -25,8 +25,8 @@ Quiet output is the default. Use `--verbose` for progress details and `--status`
 
 - Unit: `meowkit.service`
 - Description: `MeowKit Background Workload`
-- Tor is a required dependency.
-- Service stdout/stderr are discarded; MeowKit does not create persistent application log files.
+- Tor is a required dependency; the installer detects the active distribution unit (`tor@default.service` or `tor.service`) and binds the miner to that exact unit.
+- Service stdout/stderr are discarded; MeowKit does not create persistent application log files. systemd may still retain ordinary service lifecycle/audit metadata according to the host journal policy.
 - The service remains visible and manageable through systemd.
 
 ## Huge pages
@@ -36,7 +36,7 @@ The installer dynamically attempts to reserve 1 GiB pages first and 2 MiB pages 
 ## Safety notes
 
 - The configured wallet is the public wallet address supplied by the project owner.
-- `/etc/tor/torrc` is backed up before editing.
+- `/etc/tor/torrc` is backed up before editing. Uninstall removes only the MeowKit-managed SOCKS listener stanza and preserves unrelated Tor settings.
 - Existing Tor gateway and SSH settings are not intentionally modified.
 - Uninstall removes MeowKit files and service only; it does not uninstall Tor or remove unrelated settings.
 - This initial release targets x86_64 Debian/Ubuntu/Proxmox systems.

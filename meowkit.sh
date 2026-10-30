@@ -45,7 +45,9 @@ if [[ $ACTION == status ]]; then
   printf 'Enabled at boot: '
   if systemctl is-enabled --quiet meowkit.service 2>/dev/null; then printf 'yes\n'; else printf 'no\n'; fi
   printf 'Tor: '
-  if systemctl is-active --quiet tor.service; then printf 'active\n'; else printf 'not active\n'; fi
+  tor_unit=''
+  if systemctl show -p LoadState --value tor@default.service 2>/dev/null | grep -qx loaded; then tor_unit=tor@default.service; elif systemctl show -p LoadState --value tor.service 2>/dev/null | grep -qx loaded; then tor_unit=tor.service; fi
+  if [[ -n $tor_unit ]] && systemctl is-active --quiet "$tor_unit"; then printf 'active (%s)\n' "$tor_unit"; else printf 'not active\n'; fi
   printf 'SOCKS5: '
   if curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip >/dev/null 2>&1; then printf 'reachable through Tor\n'; else printf 'unavailable\n'; fi
   exit 0
