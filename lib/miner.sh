@@ -75,6 +75,8 @@ EOFJSON
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
   write_tor_check
+  HP_WRITE_PATHS='/sys/kernel/mm/hugepages/hugepages-2048kB'
+  [[ -d /sys/kernel/mm/hugepages/hugepages-1048576kB ]] && HP_WRITE_PATHS+='/sys/kernel/mm/hugepages/hugepages-1048576kB'
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
@@ -96,7 +98,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB /sys/kernel/mm/hugepages/hugepages-1048576kB
+ReadWritePaths=${MEOWKIT_DIR} ${HP_WRITE_PATHS}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=meowkit
