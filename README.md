@@ -1,4 +1,4 @@
-# MeowKit 2.0.5
+# MeowKit 2.0.6
 
 MeowKit is a Linux-only setup and service manager for an XMRig workload connected to MoneroOcean through a local Tor SOCKS5 proxy. It configures the miner, systemd service and supported CPU/memory optimisations for you.
 
@@ -76,21 +76,28 @@ sudo ./meowkit.sh
 
 The menu offers:
 
-1. **Recommended installation** — detects the system and applies the default resource settings.
-2. **Custom installation** — lets you choose CPU allocation and the huge-page RAM budget.
-3. **Repair installation** — checks and restores MeowKit-managed components.
-4. **Uninstall MeowKit** — removes the managed miner and service.
-5. **Exit** — leaves the system unchanged.
+1. **Recommended — 75% CPU allocation.**
+2. **Shared VM — 50% CPU allocation** when another VM or workload shares the host.
+3. **Custom** — choose 50% or 75% CPU allocation and the huge-page RAM budget.
+4. **Repair installation** — checks and restores MeowKit-managed components.
+5. **Uninstall MeowKit** — removes the managed miner and service.
+6. **Exit** — leaves the system unchanged.
 
-For a first installation, choose the recommended option unless you have a reason to tune the limits. The default CPU allocation is 75%; the default huge-page budget is 75% of the memory left after the safety reserves described below.
-
-On the example 4-vCPU VM, a 75% CPU setting works out to a three-thread miner allocation and a systemd CPU quota based on all four virtual CPUs. Actual performance depends on the host's available CPU time and other workloads.
+For a first installation, choose the recommended option unless you have a reason to tune the limits. The default CPU allocation is 75%. If running Proxmox guests are detected, automatic mode drops to 50%. A VirtualBox guest cannot reliably see other VMs running on its Windows host, so choose **Shared VM (50%)** when another VM is active. MeowKit never allocates less than 50% of the CPUs visible inside the guest.
 
 For a non-interactive installation, use:
 
 ```bash
 sudo ./meowkit.sh --install --verbose
 ```
+
+For a Windows-hosted VirtualBox guest sharing resources with another VM:
+
+```bash
+sudo ./meowkit.sh --install --vm-mode shared
+```
+
+You can also choose a profile with `--cpu-percent 50` or `--cpu-percent 75`, or pass `--threads N`. Explicit thread counts must be at least 50% of the guest's available logical CPUs. The systemd quota is calculated as `N × 100%`, so 18 threads produce `CPUQuota=1800%`.
 
 Use `--quiet` for minimal output or `--verbose` for detailed progress.
 
@@ -99,15 +106,15 @@ Use `--quiet` for minimal output or `--verbose` for detailed progress.
 During installation, MeowKit:
 
 - Installs missing prerequisites and configures Tor's local SOCKS5 listener on `127.0.0.1:9050`.
-- Starts Tor and checks the Tor Project verification endpoint for `IsTor: true`.
+- Attempts Tor verification during installation; a slow bootstrap is non-fatal.
 - Downloads the pinned XMRig release through Tor and verifies its SHA-256 digest before installing it.
-- Detects available logical CPUs and calculates the miner thread count and systemd CPU quota.
-- Requests 2 MiB huge pages using a memory budget that keeps a 2 GiB host reserve and, on Proxmox, accounts for configured memory assigned to running guests.
+- Detects CPUs available to the current process (respecting VM/cgroup limits), calculates the miner thread count, and sets `CPUQuota` to 100% per miner thread.
+- Calculates 2 MiB huge pages from available RAM, a safety reserve and selected thread count; it also attempts optional 1 GiB pages when exposed by the kernel.
 - Loads the MSR kernel module where supported and configures it to load at boot.
 - Writes the miner configuration and creates `meowkit.service`.
 - Enables the service at boot and starts it.
 
-The miner service runs as root, as configured by this project. Miner traffic is configured to use the local Tor proxy, and the service has a pre-start Tor verification check. If that check fails, systemd will not launch the miner.
+The service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service is ordered after Tor but does not use `Requires=` or a pre-start Tor check. If Tor is late after reboot, XMRig retries through systemd instead of blocking VM boot.
 
 The initial APT package installation is a bootstrap exception: Tor must be installed before it can proxy the package installation itself.
 
@@ -174,7 +181,7 @@ sudo systemctl status meowkit.service
 sudo ./meowkit.sh --status
 ```
 
-The service should be enabled and should start once the network and Tor are ready. Its pre-start check verifies Tor before XMRig launches.
+The service should be enabled and start independently of Tor's bootstrap timing. If Tor is still connecting, XMRig retries after a 30-second restart delay.
 
 ## Everyday commands
 
@@ -191,21 +198,19 @@ Run these from the MeowKit repository directory unless the command is a standard
 | View recent logs | `sudo journalctl -u meowkit.service -n 100 --no-pager` |
 | Check boot enablement | `sudo systemctl is-enabled meowkit.service` |
 
-Repair preserves a valid installed XMRig binary, the existing worker identity and saved CPU/huge-page settings. It restores MeowKit-managed helpers, reapplies supported tuning, checks Tor, refreshes the managed configuration and restarts the service.
+Repair preserves a valid XMRig binary and worker identity. It restores helpers, recalculates CPU quota and huge pages from current VM resources, attempts Tor verification without making it a boot prerequisite, validates JSON before replacing it, and refreshes the service unit.
 
 ## Resource tuning explained
 
 ### CPU
 
-The CPU percentage controls XMRig's thread hint and the systemd CPU quota. The quota is calculated from the total number of logical CPUs, rather than from the rounded-down miner thread count. This helps keep the requested percentage consistent on systems where the thread count does not divide evenly.
+The default profile allocates 75% of available CPUs; the shared-VM profile allocates 50%. 50% is the hard minimum. CPU detection respects the CPUs available inside the guest. With `--threads N`, MeowKit uses that count (subject to the 50% minimum) and sets `CPUQuota=N×100%`.
 
-On Proxmox hosts with running guests, MeowKit uses a more conservative default CPU allocation unless you explicitly choose a custom value.
+Proxmox guests can be detected from the host. A VirtualBox guest on Windows cannot inspect other VMs on the Windows host, so use `--vm-mode shared` when another VM is active.
 
 ### 2 MiB huge pages
 
-MeowKit allocates standard 2 MiB huge pages. It does not request 1 GiB pages or permanently change bootloader settings.
-
-The memory budget is calculated from physical RAM, less a 2 GiB host reserve and (on Proxmox) the configured memory of running VMs and containers. The selected percentage is applied to the remaining budget. Existing huge-page reservations are not reduced.
+MeowKit calculates its 2 MiB huge-page target from `MemAvailable`, a safety reserve (at least 1 GiB and normally 20% of RAM), the RandomX dataset requirement and configured thread count. The RAM percentage limits the safe budget. It also attempts one 1 GiB page when the kernel exposes that interface and enough memory is available. 1 GiB pages are optional; MeowKit does not alter GRUB or require a reboot.
 
 For a small VM, leave enough memory for Ubuntu and other services. If the guest becomes sluggish or reports memory pressure, use the custom installation option to lower the huge-page budget or increase the VM's assigned RAM.
 
@@ -235,7 +240,7 @@ Only one of the Tor unit names may exist on a given distribution. MeowKit detect
 
 ### Tor verification fails
 
-Check that the Tor service is active, that the guest can reach the network, and that the local SOCKS5 listener is available on port 9050. A firewall, clock problem, captive portal or blocked Tor connection can prevent verification. MeowKit deliberately does not fall back to a direct miner connection.
+Check that the Tor service is active, that the guest can reach the network, and that the local SOCKS5 listener is available on port 9050. A firewall, clock problem, captive portal or blocked Tor connection can delay verification. MeowKit deliberately does not fall back to a direct connection; systemd retries the miner instead of making Tor verification a boot dependency.
 
 ### Huge pages are lower than expected
 
