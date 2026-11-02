@@ -1,0 +1,26 @@
+name: Shell validation
+
+on:
+  push:
+    branches: [main, meowkit-v2-restructure]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n meowkit.sh lib/*.sh commands/*.sh
+          awk '/^  cat > \/usr\/local\/sbin\/meowkit-hugepages <<'\''EOFHP'\''$/ { inside=1; next } inside && /^EOFHP$/ { exit } inside { print }' lib/system.sh > /tmp/meowkit-hugepages
+          bash -n /tmp/meowkit-hugepages
+      - name: Check README formatting
+        run: |
+          ! grep -Fq '\\n\\n' README.md
