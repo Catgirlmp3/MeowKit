@@ -11,32 +11,32 @@ A Linux-only installer and service manager for XMRig and MoneroOcean, using a lo
 
 ## Install
 
-\`\`\`bash
+```bash
 git clone https://github.com/Catgirlmp3/MeowKit.git
 cd MeowKit
 sudo ./meowkit.sh
-\`\`\`
+```
 
 For non-interactive use:
 
-\`\`\`bash
+```bash
 sudo ./meowkit.sh --install --verbose
 sudo ./meowkit.sh --status
 sudo ./meowkit.sh --repair
 sudo ./meowkit.sh --help
-\`\`\`
+```
 
-Quiet output is the default. Use \`--verbose\` for detailed progress.
+Quiet output is the default. Use `--verbose` for detailed progress.
 
 ## Runtime behaviour
 
-- XMRig is managed by \`meowkit.service\` and runs as root.
+- XMRig is managed by `meowkit.service` and runs as root.
 - The service starts at boot and restarts after an unexpected exit.
-- Miner traffic and MeowKit release downloads use the local Tor SOCKS5 listener at \`127.0.0.1:9050\`.
-- The service refuses to start unless the Tor Project check endpoint confirms \`IsTor: true\`.
+- Miner traffic and MeowKit release downloads use the local Tor SOCKS5 listener at `127.0.0.1:9050`.
+- The service refuses to start unless the Tor Project check endpoint confirms `IsTor: true`.
 - There is no direct-connection fallback for miner traffic or release downloads.
 - Initial APT package installation is the bootstrap exception: Tor must be installed before it can provide the proxy.
-- Logs are available with \`sudo journalctl -u meowkit.service\`.
+- Logs are available with `sudo journalctl -u meowkit.service`.
 
 ## Resource tuning
 
@@ -49,7 +49,7 @@ Quiet output is the default. Use \`--verbose\` for detailed progress.
 
 ## Repair and uninstall
 
-\`--repair\` checks the installed XMRig binary, restores managed helpers, reapplies resource tuning, validates Tor, rewrites the managed miner configuration and systemd unit, then restarts the service. A valid installed XMRig binary and the existing worker identity are preserved.
+`--repair` checks the installed XMRig binary, restores managed helpers, reapplies resource tuning, validates Tor, rewrites the managed miner configuration and systemd unit, then restarts the service. A valid installed XMRig binary and the existing worker identity are preserved.
 
 Uninstall removes MeowKit's service, binary, helpers, and managed configuration. It does not uninstall Tor or remove unrelated Tor, SSH, gateway, or system settings.
 
