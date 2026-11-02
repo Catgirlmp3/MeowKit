@@ -100,7 +100,15 @@ fi
 
 if [[ $ACTION == repair ]]; then
   REPAIR=1
-  info 'Repair mode: checking managed components and preserving the existing worker identity.'
+  if ((CPU_PERCENT_EXPLICIT == 0)) && [[ -f /etc/meowkit/config.json ]]; then
+    saved_cpu=$(sed -n 's/.*"max-threads-hint":[[:space:]]*\([0-9][0-9]*\).*/\1/p' /etc/meowkit/config.json | head -n1)
+    [[ $saved_cpu =~ ^[0-9]+$ ]] && CPU_PERCENT=$saved_cpu && CPU_PERCENT_EXPLICIT=1
+  fi
+  if [[ -r /etc/meowkit/hugepages.conf ]]; then
+    # This file is created and owned by MeowKit; keep the previous RAM setting.
+    source /etc/meowkit/hugepages.conf
+  fi
+  info 'Repair mode: checking managed components and preserving the existing worker identity and resource settings.'
 fi
 run_install
 
