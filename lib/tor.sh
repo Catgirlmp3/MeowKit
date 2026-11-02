@@ -2,14 +2,19 @@
 bootstrap_tor() {
   begin_step 'Tor bootstrap'
   export DEBIAN_FRONTEND=noninteractive
-  if ! command -v tor >/dev/null 2>&1; then
-    info 'Tor is not installed. Installing Tor and required tools (initial package bootstrap).'
-    apt-get update -qq || fail 'Package index update failed during initial Tor bootstrap.'
-    apt-get install -y -qq tor curl ca-certificates python3 tar gzip || fail 'Could not install Tor and required packages.'
-  else
-    for pkg in curl python3 tar; do
-      command -v "$pkg" >/dev/null 2>&1 || fail "Required tool '$pkg' is missing. Install it before running MeowKit; refusing an unproxied package download."
-    done
+
+  # Repair missing runtime tools even when Tor was installed beforehand.
+  local missing=()
+  command -v tor >/dev/null 2>&1 || missing+=(tor)
+  command -v curl >/dev/null 2>&1 || missing+=(curl)
+  command -v python3 >/dev/null 2>&1 || missing+=(python3)
+  command -v tar >/dev/null 2>&1 || missing+=(tar)
+  command -v gzip >/dev/null 2>&1 || missing+=(gzip)
+  [[ -s /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
+  if (("${#missing[@]}" > 0)); then
+    info "Installing missing prerequisites: ${missing[*]}"
+    apt-get update -qq || fail 'Package index update failed during prerequisite installation.'
+    apt-get install -y -qq "${missing[@]}" || fail 'Could not install Tor and required packages.'
   fi
 
   install -d -m 755 /etc/tor
@@ -25,7 +30,6 @@ bootstrap_tor() {
     fail 'Tor configuration validation failed. The previous configuration was restored where possible.'
   fi
 
-  # Prefer the instance unit when both units are installed.
   if systemctl list-unit-files tor@default.service --no-legend 2>/dev/null | grep -q '^tor@default\.service'; then
     TOR_UNIT='tor@default.service'
   elif systemctl list-unit-files tor.service --no-legend 2>/dev/null | grep -q '^tor\.service'; then
@@ -36,13 +40,17 @@ bootstrap_tor() {
   systemctl enable "$TOR_UNIT" >/dev/null 2>&1 || fail "Could not enable $TOR_UNIT at boot."
   systemctl restart "$TOR_UNIT" || fail "Could not start/restart $TOR_UNIT."
 
-  local ok=0
+  local ok=0 response
   for _ in {1..18}; do
-    if curl --connect-timeout 5 --max-time 12 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip >/dev/null 2>&1; then ok=1; break; fi
+    if response=$(curl --connect-timeout 5 --max-time 12 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null) &&
+       printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
+      ok=1
+      break
+    fi
     sleep 5
   done
-  ((ok == 1)) || fail 'Tor did not establish a working SOCKS5 connection within 90 seconds. Check relay reachability, clock and firewall.'
-  info 'Tor is running and SOCKS5 connectivity is verified.'
+  ((ok == 1)) || fail 'Tor did not verify as a Tor exit within 90 seconds. Check relay reachability, clock and firewall.'
+  info 'Tor is running and the Tor Project API confirms the connection is using Tor.'
 }
 
 curl_tor() {

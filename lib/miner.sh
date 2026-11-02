@@ -7,14 +7,9 @@ worker_name() {
   local idfile='/etc/meowkit/worker-id'
   local id=1
   install -d -m 750 "$MEOWKIT_DIR"
-  # Keep the same pool identity across repairs and reinstalls. Allocate a new
-  # sequential worker number only when this host has no saved identity.
   if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then
     id=$(<"$idfile")
   else
-    if [[ -f $idfile ]] || [[ -f "$MEOWKIT_DIR/config.json" ]]; then
-      id=1
-    fi
     printf '%s\n' "$id" > "$idfile"
     chmod 600 "$idfile"
   fi
@@ -22,6 +17,11 @@ worker_name() {
 }
 
 install_xmrig() {
+  begin_step 'XMRig installation check'
+  if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]] && "$MEOWKIT_BIN" --version 2>&1 | grep -Fq "$XMRIG_VERSION"; then
+    log "Existing XMRig $XMRIG_VERSION binary is valid; preserving it."
+    return 0
+  fi
   begin_step 'XMRig download and verification'
   make_workdir
   local api="$WORKDIR/release.json" asset="$WORKDIR/xmrig.tar.gz" digest url
@@ -44,6 +44,16 @@ PY
   install -m 0755 "$extracted" "$MEOWKIT_BIN"
 }
 
+write_tor_check() {
+  cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
+#!/bin/sh
+set -eu
+response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
+printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)'
+EOFCHK
+  chmod 755 /usr/local/sbin/meowkit-tor-check
+}
+
 write_configuration() {
   begin_step 'Miner configuration'
   install -d -m 750 "$MEOWKIT_DIR"
@@ -54,7 +64,7 @@ write_configuration() {
   "background": false,
   "colors": false,
   "title": false,
-  "randomx": { "init": -1, "mode": "auto", "1gb-pages": true, "rdmsr": true, "wrmsr": true, "numa": true },
+  "randomx": { "init": -1, "mode": "auto", "1gb-pages": false, "rdmsr": true, "wrmsr": true, "numa": true },
   "cpu": { "enabled": true, "huge-pages": true, "huge-pages-jit": true, "priority": 1, "yield": true, "max-threads-hint": ${CPU_PERCENT}, "asm": true },
   "opencl": { "enabled": false },
   "cuda": { "enabled": false },
@@ -64,13 +74,7 @@ write_configuration() {
 }
 EOFJSON
   chmod 640 "$MEOWKIT_DIR/config.json"
-  cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
-#!/bin/sh
-/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip -o /dev/null
-EOFCHK
-  chmod 755 /usr/local/sbin/meowkit-tor-check
-
-  local quota=$((THREADS * 100))
+  write_tor_check
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
 Description=MeowKit Background Workload
@@ -81,20 +85,22 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+ExecStartPre=/usr/local/sbin/meowkit-hugepages
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS} --proxy=socks5://127.0.0.1:9050 --randomx-1gb-pages --huge-pages-jit
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS} --proxy=socks5://127.0.0.1:9050 --huge-pages-jit
 Restart=always
 RestartSec=15
 Nice=10
 CPUWeight=20
-CPUQuota=${quota}%
+CPUQuota=${CPU_QUOTA}%
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${MEOWKIT_DIR}
-StandardOutput=null
-StandardError=null
+ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meowkit
 
 [Install]
 WantedBy=multi-user.target
@@ -115,6 +121,6 @@ run_install() {
   configure_hugepages
   install_xmrig
   write_configuration
-  info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} CPU threads."
-  info 'No persistent MeowKit application logs are configured. Use systemctl status meowkit.service for service state.'
+  info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} CPU threads; CPU quota ${CPU_QUOTA}%."
+  info 'Service output is available through: journalctl -u meowkit.service.'
 }
