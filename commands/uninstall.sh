@@ -2,20 +2,18 @@
 set -Eeuo pipefail
 
 systemctl disable --now meowkit.service >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-tor-check
+rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig \
+  /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages \
+  /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
 rm -rf /etc/meowkit
 
-# Remove the listener only when the exact managed marker is immediately
-# followed by the exact directive MeowKit writes. Never delete an arbitrary
-# following line if an administrator has edited torrc since installation.
+# Remove only the exact marker/directive pair that MeowKit manages.
 if [[ -f /etc/tor/torrc ]]; then
   tmp=$(mktemp /etc/tor/torrc.meowkit.XXXXXX)
   if awk '
     $0 == "# MeowKit managed SOCKS5 listener" {
       if (getline nextline > 0) {
-        if (nextline == "SocksPort 127.0.0.1:9050") {
-          next
-        }
+        if (nextline == "SocksPort 127.0.0.1:9050") { next }
         print
         print nextline
         next
@@ -34,6 +32,5 @@ if [[ -f /etc/tor/torrc ]]; then
     tor --verify-config -f /etc/tor/torrc >/dev/null 2>&1 || printf 'Warning: Tor configuration needs review after removing the MeowKit listener.\n' >&2
   fi
 fi
-
 systemctl daemon-reload
 printf 'MeowKit components removed. Tor itself, gateway settings, SSH settings and unrelated services were left intact.\n'
