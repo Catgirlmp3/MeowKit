@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-MEOWKIT_VERSION='2.0.5'
+MEOWKIT_VERSION='2.0.6'
 MEOWKIT_DIR='/etc/meowkit'
 MEOWKIT_BIN='/usr/local/bin/meowkit-xmrig'
 MEOWKIT_SERVICE='/etc/systemd/system/meowkit.service'
