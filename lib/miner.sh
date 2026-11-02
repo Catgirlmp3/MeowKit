@@ -4,15 +4,9 @@ POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
 
 worker_name() {
-  local idfile='/etc/meowkit/worker-id'
-  local id=1
+  local idfile="$MEOWKIT_DIR/worker-id" id=1
   install -d -m 750 "$MEOWKIT_DIR"
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then
-    id=$(<"$idfile")
-  else
-    printf '%s\n' "$id" > "$idfile"
-    chmod 600 "$idfile"
-  fi
+  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then id=$(<"$idfile"); else printf '%s\n' "$id" > "$idfile"; chmod 600 "$idfile"; fi
   RIG_NAME="meow$id"
 }
 
@@ -35,7 +29,7 @@ for a in obj.get('assets',[]):
         break
 PY
 )
-  [[ ${digest:-} =~ ^[a-fA-F0-9]{64}$ && ${url:-} == https://github.com/xmrig/* ]] || fail 'The official release did not provide a usable SHA-256 digest and download URL; refusing an unverified binary.'
+  [[ ${digest:-} =~ ^[a-fA-F0-9]{64}$ && ${url:-} == https://github.com/xmrig/* ]] || fail 'Official XMRig release did not provide a usable SHA-256 digest and download URL.'
   curl_tor --output "$asset" "$url" || fail 'XMRig download failed through Tor.'
   printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
   tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
@@ -55,17 +49,19 @@ EOFCHK
 }
 
 write_configuration() {
-  begin_step 'Miner configuration'
+  begin_step 'Validated miner configuration'
   install -d -m 750 "$MEOWKIT_DIR"
+  [[ -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
   worker_name
-  cat > "$MEOWKIT_DIR/config.json" <<EOFJSON
+  local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
+  cat > "$tmp" <<EOFJSON
 {
   "autosave": false,
   "background": false,
   "colors": false,
   "title": false,
-  "randomx": { "init": -1, "mode": "auto", "1gb-pages": false, "rdmsr": true, "wrmsr": true, "numa": true },
-  "cpu": { "enabled": true, "huge-pages": true, "huge-pages-jit": true, "priority": 1, "yield": true, "max-threads-hint": ${CPU_PERCENT}, "asm": true },
+  "randomx": { "init": -1, "mode": "auto", "1gb-pages": true, "rdmsr": true, "wrmsr": true, "numa": true },
+  "cpu": { "enabled": true, "huge-pages": true, "huge-pages-jit": true, "priority": 1, "yield": true, "asm": true },
   "opencl": { "enabled": false },
   "cuda": { "enabled": false },
   "pools": [
@@ -73,23 +69,25 @@ write_configuration() {
   ]
 }
 EOFJSON
-  chmod 640 "$MEOWKIT_DIR/config.json"
+  python3 -m json.tool "$tmp" >/dev/null || { rm -f "$tmp"; fail 'Generated config.json is invalid JSON; refusing to install it.'; }
+  chmod 640 "$tmp"
+  chown root:root "$tmp"
+  mv -f "$tmp" "$MEOWKIT_DIR/config.json"
   write_tor_check
+
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
 Description=MeowKit Background Workload
-After=network-online.target ${TOR_UNIT}
 Wants=network-online.target ${TOR_UNIT}
-Requires=${TOR_UNIT}
+After=network-online.target ${TOR_UNIT}
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStartPre=/usr/local/sbin/meowkit-hugepages
-ExecStartPre=/usr/local/sbin/meowkit-tor-check
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS} --proxy=socks5://127.0.0.1:9050 --huge-pages-jit
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS}
 Restart=always
-RestartSec=15
+RestartSec=30
 Nice=10
 CPUWeight=20
 CPUQuota=${CPU_QUOTA}%
@@ -97,7 +95,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB
+ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB /sys/kernel/mm/hugepages/hugepages-1048576kB
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=meowkit
@@ -106,21 +104,23 @@ SyslogIdentifier=meowkit
 WantedBy=multi-user.target
 EOFUNIT
   chmod 644 "$MEOWKIT_SERVICE"
+  systemd-analyze verify "$MEOWKIT_SERVICE" || fail 'systemd rejected the generated service unit.'
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
-  systemctl restart meowkit.service || fail 'MeowKit service failed to start. Check Tor connectivity and XMRig configuration.'
+  systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
 }
 
 run_install() {
-  CURRENT_STEP='preflight'
+  CURRENT_STEP=preflight
   require_cmd systemctl
   require_cmd apt-get
+  require_cmd python3
   detect_resources
   bootstrap_tor
   configure_msr
   configure_hugepages
   install_xmrig
   write_configuration
-  info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} CPU threads; CPU quota ${CPU_QUOTA}%."
-  info 'Service output is available through: journalctl -u meowkit.service.'
+  info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} available CPU threads; CPUQuota=${CPU_QUOTA}%."
+  info 'Tor is a runtime dependency only: a slow Tor bootstrap will not block VM boot.'
 }
