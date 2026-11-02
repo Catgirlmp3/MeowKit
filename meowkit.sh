@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Preserve whether CPU_PERCENT was supplied by the caller before common.sh
-# applies its default. Proxmox tuning must never override an explicit choice.
 CPU_PERCENT_EXPLICIT=0
 [[ ${CPU_PERCENT+x} ]] && CPU_PERCENT_EXPLICIT=1
 
@@ -14,6 +12,7 @@ source "$ROOT/lib/miner.sh"
 
 MODE=quiet
 ACTION=install
+REPAIR=0
 RAM_PERCENT=${RAM_PERCENT:-75}
 
 usage() {
@@ -23,9 +22,9 @@ Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install|--repair]
 
   --quiet     Minimal installer output (default)
   --verbose   Show detailed progress
-  --status    Show service and Tor status; does not display logs
+  --status    Show service and Tor status
   --install   Run the installer
-  --repair    Reconcile installed files and restart the service
+  --repair    Repair missing or invalid components and restart the service
   --help      Show this help
 TXT
 }
@@ -68,7 +67,7 @@ show_menu() {
       Choose resource limits and optimisations
 
   [3] Repair installation
-      Reconcile configuration and restart the service
+      Check and restore managed components
 
   [4] Uninstall MeowKit
       Remove MeowKit components
@@ -78,14 +77,14 @@ TXT
   printf '\n  Output mode: [Q] Quiet  [V] Verbose\n\n'
 }
 
-if [[ -t 0 && $MODE == quiet ]]; then
+if [[ $ACTION == install && -t 0 && $MODE == quiet ]]; then
   show_menu
   read -r -p '  Choose [1-5]: ' choice
   case "$choice" in
     1) ;;
     2)
       read -r -p '  CPU allocation percentage [75]: ' CUSTOM_CPU; CUSTOM_CPU=${CUSTOM_CPU:-75}
-      [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=90)) || fail 'Custom CPU percentage must be 10–90.'
+      [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=90)) || fail 'CPU percentage must be 10–90.'
       read -r -p '  Huge-page RAM budget percentage [75]: ' CUSTOM_RAM; CUSTOM_RAM=${CUSTOM_RAM:-75}
       [[ $CUSTOM_RAM =~ ^[0-9]+$ ]] && ((CUSTOM_RAM>=10 && CUSTOM_RAM<=90)) || fail 'RAM percentage must be 10–90.'
       CPU_PERCENT=$CUSTOM_CPU; CPU_PERCENT_EXPLICIT=1; RAM_PERCENT=$CUSTOM_RAM
@@ -100,12 +99,13 @@ if [[ -t 0 && $MODE == quiet ]]; then
 fi
 
 if [[ $ACTION == repair ]]; then
-  info 'Repair mode: existing worker identity is preserved; managed configuration and service will be reconciled.'
+  REPAIR=1
+  info 'Repair mode: checking managed components and preserving the existing worker identity.'
 fi
 run_install
 
 if [[ -t 1 ]]; then
-  printf '\nMeowKit installation completed. Press Enter to clear the terminal.'
+  printf '\nMeowKit operation completed. Press Enter to clear the terminal.'
   read -r _ || true
   clear 2>/dev/null || printf '\033[2J\033[H'
 fi
