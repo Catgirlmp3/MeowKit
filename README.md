@@ -1,44 +1,58 @@
-# MeowKit 2.0.4
+# MeowKit 2.0.5
 
-A modular Debian/Ubuntu/Proxmox installer for XMRig + MoneroOcean using a local Tor SOCKS5 proxy.
+A Linux-only installer and service manager for XMRig and MoneroOcean, using a local Tor SOCKS5 proxy.
+
+## Requirements
+
+- Debian, Ubuntu, or Proxmox VE on x86_64
+- Root access
+- systemd and APT
+- An active internet connection for the initial package bootstrap
 
 ## Install
 
-Run as root:
-
-```bash
+\`\`\`bash
+git clone https://github.com/Catgirlmp3/MeowKit.git
+cd MeowKit
 sudo ./meowkit.sh
-```
+\`\`\`
 
-Quiet output is the default. Use `--verbose` for progress details and `--status` to inspect service state without displaying logs. Error screens remain visible for about 15 seconds before the terminal is cleared.
+For non-interactive use:
 
-## Network behaviour
+\`\`\`bash
+sudo ./meowkit.sh --install --verbose
+sudo ./meowkit.sh --status
+sudo ./meowkit.sh --repair
+sudo ./meowkit.sh --help
+\`\`\`
 
-- Tor SOCKS5 listener: `127.0.0.1:9050`
-- MoneroOcean pool: `gulf.moneroocean.stream:10001`
-- XMRig is configured to use the SOCKS5 proxy.
-- GitHub release metadata and XMRig download are fetched through Tor.
-- Initial APT installation of Tor is the bootstrap exception because Tor must be installed before it can provide a proxy. Once Tor is running, MeowKit's own remote downloads use Tor.
-- There is no direct-connection fallback for XMRig or GitHub downloads.
+Quiet output is the default. Use \`--verbose\` for detailed progress.
 
-## Service
+## Runtime behaviour
 
-The miner service is enabled automatically at installation and starts at boot. It restarts after an unexpected exit. To stop it, use `sudo systemctl disable --now meowkit.service`.
+- XMRig is managed by \`meowkit.service\` and runs as root.
+- The service starts at boot and restarts after an unexpected exit.
+- Miner traffic and MeowKit release downloads use the local Tor SOCKS5 listener at \`127.0.0.1:9050\`.
+- The service refuses to start unless the Tor Project check endpoint confirms \`IsTor: true\`.
+- There is no direct-connection fallback for miner traffic or release downloads.
+- Initial APT package installation is the bootstrap exception: Tor must be installed before it can provide the proxy.
+- Logs are available with \`sudo journalctl -u meowkit.service\`.
 
-- Unit: `meowkit.service`
-- Description: `MeowKit Background Workload`
-- Tor is a required dependency; the installer detects the active distribution unit (`tor@default.service` or `tor.service`) and binds the miner to that exact unit.
-- Service stdout/stderr are sent to the systemd journal under `meowkit`; inspect with `sudo journalctl -u meowkit.service`.
-- The service remains visible and manageable through systemd.
+## Resource tuning
 
-## Huge pages
+- CPU allocation is applied through XMRig's thread hint and systemd's CPU quota. The quota is calculated against total logical CPUs, not the already-rounded miner thread count.
+- MeowKit dynamically allocates 2 MiB huge pages. It does not request 1 GiB pages or edit bootloader configuration.
+- Huge-page budgeting uses physical RAM, a 2 GiB host safety reserve, and configured memory for running Proxmox guests. Existing huge-page reservations are not reduced.
+- The 2 MiB allocation is retried before the miner starts, including after reboot.
+- The MSR module is loaded automatically where supported, configured to permit writes where the kernel exposes that option, and loaded at boot.
+- Kernel lockdown, unsupported CPUs, unavailable MSR devices, or memory fragmentation can prevent an optimisation from being applied. Mining can continue without unavailable optimisations.
 
-The installer dynamically attempts to reserve 1 GiB pages first and 2 MiB pages from the remaining shared RAM budget. It does not edit bootloader configuration. Dynamic 1 GiB allocation may fail due to physical-memory fragmentation; actual counts are read back and reported in verbose mode. A reboot-time reservation may be needed on some systems.
+## Repair and uninstall
 
-## 2.0.4 fixes\n\n- `--repair` is now accepted by the command-line parser.\n- Proxmox's 50% CPU default no longer overrides an explicitly selected CPU percentage.\n- Missing prerequisites are installed whether Tor was already present or not.\n- Tor connectivity checks now verify the Tor Project API's `IsTor` result, not merely an HTTP response.\n- Uninstall uses a strict marker/directive pair before removing the managed Tor listener.\n- Miner output is available in the systemd journal for troubleshooting.\n\n## Safety notes
+\`--repair\` checks the installed XMRig binary, restores managed helpers, reapplies resource tuning, validates Tor, rewrites the managed miner configuration and systemd unit, then restarts the service. A valid installed XMRig binary and the existing worker identity are preserved.
 
-- The configured wallet is the public wallet address supplied by the project owner.
-- `/etc/tor/torrc` is backed up before editing. If validation fails, the previous configuration is restored. Uninstall removes the SOCKS listener only when the exact MeowKit marker is immediately followed by its exact directive; edited or unrelated lines are preserved.
-- Existing Tor gateway and SSH settings are not intentionally modified.
-- Uninstall removes MeowKit files and service only; it does not uninstall Tor or remove unrelated settings.
-- This initial release targets x86_64 Debian/Ubuntu/Proxmox systems.
+Uninstall removes MeowKit's service, binary, helpers, and managed configuration. It does not uninstall Tor or remove unrelated Tor, SSH, gateway, or system settings.
+
+## Supported scope
+
+MeowKit targets x86_64 Debian, Ubuntu, and Proxmox VE systems using systemd and APT. Windows support is maintained separately and is not part of this repository.
