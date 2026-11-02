@@ -23,6 +23,10 @@ detect_resources() {
   THREADS=$((TOTAL_THREADS * CPU_PERCENT / 100))
   ((THREADS >= (TOTAL_THREADS + 1) / 2)) || THREADS=$(((TOTAL_THREADS + 1) / 2))
   ((THREADS > 0)) || THREADS=1
+  if [[ -n ${THREADS_OVERRIDE:-} ]]; then
+    (( THREADS_OVERRIDE >= (TOTAL_THREADS + 1) / 2 && THREADS_OVERRIDE <= TOTAL_THREADS )) || fail "--threads must be between $(((TOTAL_THREADS + 1) / 2)) and ${TOTAL_THREADS} on this system (minimum 50%)."
+    THREADS=$THREADS_OVERRIDE
+  fi
   CPU_QUOTA=$((THREADS * 100))
   log "Available CPU threads: $TOTAL_THREADS; miner threads: $THREADS; CPU quota: ${CPU_QUOTA}%; RAM: ${TOTAL_RAM_MB} MiB; detected running Proxmox guests: $guests"
 }
@@ -59,9 +63,9 @@ AVAILABLE_BUDGET=$((MEM_AVAIL_MB - RESERVE_MB))
 (( AVAILABLE_BUDGET > 0 )) || AVAILABLE_BUDGET=0
 # RandomX uses one shared dataset (~2.5 GiB); add per-thread scratch space and headroom.
 RANDOMX_MB=$((2800 + THREADS * 4))
+BUDGET_MB=$((AVAILABLE_BUDGET * RAM_PERCENT / 100))
 TARGET_MB=$RANDOMX_MB
-(( TARGET_MB > AVAILABLE_BUDGET )) && TARGET_MB=$AVAILABLE_BUDGET
-TARGET_MB=$((TARGET_MB * RAM_PERCENT / 100))
+(( TARGET_MB > BUDGET_MB )) && TARGET_MB=$BUDGET_MB
 TARGET_PAGES=$((TARGET_MB / 2))
 if [[ -w $HP2 ]]; then
   CURRENT=$(cat "$HP2" 2>/dev/null || echo 0)
@@ -77,7 +81,7 @@ fi
 # failure is non-fatal because many VM kernels cannot allocate these pages after boot.
 if [[ -w $HP1 ]]; then
   CURRENT1=$(cat "$HP1" 2>/dev/null || echo 0)
-  if (( CURRENT1 == 0 && TARGET_MB >= 3072 )); then
+  if (( CURRENT1 == 0 && TARGET_MB >= 2500 )); then
     printf '1\n' > "$HP1" 2>/dev/null || true
   fi
   echo "MeowKit: 1 GiB huge pages $(cat "$HP1" 2>/dev/null || echo "$CURRENT1") reserved (optional)."
