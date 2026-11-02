@@ -18,6 +18,9 @@ fi
 printf '2 MiB huge pages: '
 hp='/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
 if [[ -r $hp ]]; then printf '%s pages reserved\n' "$(cat "$hp")"; else printf 'unavailable\n'; fi
+printf '1 GiB huge pages: '
+hp1='/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
+if [[ -r $hp1 ]]; then printf '%s pages reserved\n' "$(cat "$hp1")"; else printf 'unavailable\n'; fi
 printf 'MSR module: '
 grep -qw msr /proc/modules && printf 'loaded\n' || printf 'not loaded\n'
 printf 'Application log files: none created by MeowKit\n'
