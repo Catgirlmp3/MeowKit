@@ -14,7 +14,7 @@ detect_resources() {
 
   CPU_PERCENT=${CPU_PERCENT:-75}
   RAM_PERCENT=${RAM_PERCENT:-75}
-  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT == 50 || CPU_PERCENT == 75)) || fail 'CPU allocation must be 50% or 75%. MeowKit never allocates below 50%.'
+  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT == 50 || CPU_PERCENT == 75 || CPU_PERCENT == 100)) || fail 'CPU allocation must be 50%, 75% or 100%. MeowKit never allocates below 50%.'
   [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 10 && RAM_PERCENT <= 90)) || fail 'Huge-page RAM budget percentage must be between 10 and 90.'
 
   if [[ ${VM_MODE:-auto} == shared ]]; then CPU_PERCENT=50; fi
