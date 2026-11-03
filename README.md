@@ -1,4 +1,4 @@
-# MeowKit 2.0.6
+# MeowKit 2.0.7
 
 MeowKit is a Linux-only setup and service manager for an XMRig workload connected to MoneroOcean through a local Tor SOCKS5 proxy. It configures the miner, systemd service and supported CPU/memory optimisations for you.
 
@@ -78,10 +78,13 @@ The menu offers:
 
 1. **Recommended — 75% CPU allocation.**
 2. **Shared VM — 50% CPU allocation** when another VM or workload shares the host.
-3. **Custom** — choose 50% or 75% CPU allocation and the huge-page RAM budget.
-4. **Repair installation** — checks and restores MeowKit-managed components.
-5. **Uninstall MeowKit** — removes the managed miner and service.
-6. **Exit** — leaves the system unchanged.
+3. **Maximum — 100% CPU allocation**, using every logical CPU available to the guest.
+4. **Custom** — choose 50%, 75% or 100% CPU allocation and the huge-page RAM budget.
+5. **Repair installation** — checks and restores MeowKit-managed components.
+6. **Uninstall MeowKit** — removes the managed miner and service.
+7. **Exit** — leaves the system unchanged.
+
+The 100% profile removes MeowKit's CPU headroom allowance. It can make the guest less responsive and can compete with other VMs or host workloads; use it when maximum mining throughput is the priority.
 
 For a first installation, choose the recommended option unless you have a reason to tune the limits. The default CPU allocation is 75%. If running Proxmox guests are detected, automatic mode drops to 50%. A VirtualBox guest cannot reliably see other VMs running on its Windows host, so choose **Shared VM (50%)** when another VM is active. MeowKit never allocates less than 50% of the CPUs visible inside the guest.
 
@@ -97,7 +100,7 @@ For a Windows-hosted VirtualBox guest sharing resources with another VM:
 sudo ./meowkit.sh --install --vm-mode shared
 ```
 
-You can also choose a profile with `--cpu-percent 50` or `--cpu-percent 75`, or pass `--threads N`. Explicit thread counts must be at least 50% of the guest's available logical CPUs. The systemd quota is calculated as `N × 100%`, so 18 threads produce `CPUQuota=1800%`.
+You can also choose a profile with `--cpu-percent 50`, `--cpu-percent 75` or `--cpu-percent 100`, or pass `--threads N`. Explicit thread counts must be at least 50% of the guest's available logical CPUs. The systemd quota is calculated as `N × 100%`, so 18 threads produce `CPUQuota=1800%`.
 
 Use `--quiet` for minimal output or `--verbose` for detailed progress.
 
@@ -204,7 +207,7 @@ Repair preserves a valid XMRig binary and worker identity. It restores helpers, 
 
 ### CPU
 
-The default profile allocates 75% of available CPUs; the shared-VM profile allocates 50%. 50% is the hard minimum. CPU detection respects the CPUs available inside the guest. With `--threads N`, MeowKit uses that count (subject to the 50% minimum) and sets `CPUQuota=N×100%`.
+The default profile allocates 75% of available CPUs; the shared-VM profile allocates 50%; the maximum profile allocates 100%. 50% is the hard minimum. CPU detection respects the CPUs available inside the guest. With `--threads N`, MeowKit uses that count (subject to the 50% minimum) and sets `CPUQuota=N×100%`.
 
 Proxmox guests can be detected from the host. A VirtualBox guest on Windows cannot inspect other VMs on the Windows host, so use `--vm-mode shared` when another VM is active.
 
