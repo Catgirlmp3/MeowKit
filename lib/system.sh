@@ -53,7 +53,12 @@ TARGET=$((2800 + THREADS * 4))
 # Prefer 1 GiB pages only when a whole page fits inside the safe budget.
 ONE_GB=0
 if [[ -w $HP1 ]] && ((BUDGET >= 1024)); then
-  printf '1\n' > "$HP1" 2>/dev/null && ONE_GB=1 || true
+  CURRENT1=$(cat "$HP1" 2>/dev/null || echo 0)
+  if ((CURRENT1 > 0)); then
+    ONE_GB=$((CURRENT1 * 1024))
+  else
+    printf '1\n' > "$HP1" 2>/dev/null && ONE_GB=1 || true
+  fi
 fi
 REMAINING=$((TARGET - ONE_GB * 1024))
 ((REMAINING < 0)) && REMAINING=0
