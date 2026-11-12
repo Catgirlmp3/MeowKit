@@ -4,10 +4,13 @@ POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
 
 worker_name() {
-  local idfile="$MEOWKIT_DIR/worker-id" id=1
-  install -d -m 750 "$MEOWKIT_DIR"
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then id=$(<"$idfile"); else printf '%s\n' "$id" > "$idfile"; chmod 600 "$idfile"; fi
-  RIG_NAME="meow$id"
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create settings directory.'
+  if [[ -z ${WORKER_NAME:-} && -f $MEOWKIT_DIR/worker-name ]]; then WORKER_NAME=$(<"$MEOWKIT_DIR/worker-name"); fi
+  WORKER_NAME=${WORKER_NAME:-$(hostname -s 2>/dev/null || echo meow-worker)}
+  [[ $WORKER_NAME =~ ^[A-Za-z0-9._-]{1,32}$ ]] || fail 'Worker name must be 1-32 chars: letters, numbers, dot, underscore or hyphen.'
+  RIG_NAME=$WORKER_NAME
+  printf '%s\n' "$RIG_NAME" > "$MEOWKIT_DIR/worker-name" || fail 'Could not save worker name.'
+  chmod 600 "$MEOWKIT_DIR/worker-name" || warn 'Could not restrict worker-name permissions.'
 }
 
 install_xmrig() {
@@ -50,8 +53,17 @@ EOFCHK
 
 write_configuration() {
   begin_step 'Validated miner configuration'
-  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
-  install -d -m 750 "$MEOWKIT_DIR"
+  LOG_MODE=${LOG_MODE:-normal}
+  case $LOG_MODE in
+    normal) LOG_STDOUT=journal; LOG_STDERR=journal ;;
+    errors) LOG_STDOUT=null; LOG_STDERR=journal ;;
+    none) LOG_STDOUT=null; LOG_STDERR=null ;;
+    *) fail 'Log mode must be normal, errors or none.' ;;
+  esac
+  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory."
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create application settings directory.'
+  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf" || warn 'Could not persist logging preference.'
+  chmod 600 "$MEOWKIT_DIR/settings.conf" 2>/dev/null || warn 'Could not restrict settings permissions.'
   [[ ! -e $MEOWKIT_DIR/config.json || -f $MEOWKIT_DIR/config.json ]] || fail "$MEOWKIT_DIR/config.json exists but is not a regular file. Move or remove the conflicting directory, then rerun."
   worker_name
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
@@ -87,7 +99,8 @@ EOFJSON
     HP_WRITE_PATHS=${HP_WRITE_PATHS% }
   fi
 
-  [[ -x /usr/local/sbin/meowkit-hugepages ]] || fail 'Huge-page helper was not created at /usr/local/sbin/meowkit-hugepages.'
+  local hp_pre=''
+  if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
@@ -98,7 +111,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStartPre=/usr/local/sbin/meowkit-hugepages
+${hp_pre}
 ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS}
 Restart=always
 RestartSec=30
@@ -110,8 +123,8 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${MEOWKIT_DIR} ${HP_WRITE_PATHS}
-StandardOutput=journal
-StandardError=journal
+StandardOutput=${LOG_STDOUT}
+StandardError=${LOG_STDERR}
 SyslogIdentifier=meowkit
 
 [Install]
