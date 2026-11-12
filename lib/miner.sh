@@ -64,8 +64,6 @@ write_configuration() {
   install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create application settings directory.'
   printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf" || warn 'Could not persist logging preference.'
   chmod 600 "$MEOWKIT_DIR/settings.conf" 2>/dev/null || warn 'Could not restrict settings permissions.'
-  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
-  install -d -m 750 "$MEOWKIT_DIR"
   [[ ! -e $MEOWKIT_DIR/config.json || -f $MEOWKIT_DIR/config.json ]] || fail "$MEOWKIT_DIR/config.json exists but is not a regular file. Move or remove the conflicting directory, then rerun."
   worker_name
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
