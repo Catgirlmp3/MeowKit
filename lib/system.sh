@@ -68,7 +68,7 @@ if [[ -w $HP2 ]] && ((TARGET2 > CURRENT2)); then
 fi
 echo "MeowKit: 1GiB pages currently $((CURRENT1 + ADD1)) (added $ADD1); 2MiB pages currently $(cat "$HP2" 2>/dev/null || echo "$CURRENT2")."
 ((ADD1 == 1)) || echo 'MeowKit: 1GiB pages unavailable or not safely allocatable; 2MiB/normal-page fallback selected.'
-EOFHPP
+EOFHP
   chmod 755 /usr/local/sbin/meowkit-hugepages || { warn 'Could not install huge-page helper; continuing without it.'; return 0; }
   /usr/local/sbin/meowkit-hugepages || warn 'Huge-page helper failed; continuing with kernel defaults.'
 }
