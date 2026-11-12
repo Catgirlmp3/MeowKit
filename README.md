@@ -109,7 +109,7 @@ Use `--quiet` for minimal output or `--verbose` for detailed progress.
 During installation, MeowKit:
 
 - Installs missing prerequisites and configures Tor's local SOCKS5 listener on `127.0.0.1:9050`.
-- Attempts Tor verification during installation; a slow bootstrap is non-fatal.
+- Checks Debian package state, installs missing Tor prerequisites, validates the Tor configuration, enables the available Tor systemd unit, and tests the SOCKS5 route. Slow Tor bootstrap is non-fatal; the miner retries through the proxy.
 - Downloads the pinned XMRig release through Tor and verifies its SHA-256 digest before installing it.
 - Detects CPUs available to the current process (respecting VM/cgroup limits), calculates the miner thread count, and sets `CPUQuota` to 100% per miner thread.
 - Calculates 2 MiB huge pages from available RAM, a safety reserve and selected thread count; it also attempts optional 1 GiB pages when exposed by the kernel.
@@ -117,7 +117,7 @@ During installation, MeowKit:
 - Writes the miner configuration and creates `meowkit.service`.
 - Enables the service at boot and starts it.
 
-The service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service is ordered after Tor but does not use `Requires=` or a pre-start Tor check. If Tor is late after reboot, XMRig retries through systemd instead of blocking VM boot.
+The service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service requests Tor at boot but does not order miner startup behind Tor's systemd readiness notification. If Tor is late after reboot, XMRig starts and retries through the SOCKS5 proxy instead of blocking VM boot. It never falls back to a direct pool connection.
 
 The initial APT package installation is a bootstrap exception: Tor must be installed before it can proxy the package installation itself.
 
