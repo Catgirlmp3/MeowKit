@@ -60,13 +60,13 @@ ADD1=0
 if [[ -w $HP1 ]] && ((TARGET >= 2600 && CURRENT1 == 0)); then
   printf '1\n' > "$HP1" 2>/dev/null && ADD1=1 || true
 fi
-REMAINING=$((TARGET - ADD1 * 1024))
+REMAINING=$((TARGET - (CURRENT1 + ADD1) * 1024))
 ((REMAINING < 0)) && REMAINING=0
 TARGET2=$(( (REMAINING + 1) / 2 ))
 if [[ -w $HP2 ]] && ((TARGET2 > CURRENT2)); then
   printf '%s\n' "$TARGET2" > "$HP2" 2>/dev/null || echo 'MeowKit: 2 MiB page reservation failed; existing pages retained.' >&2
 fi
-echo "MeowKit: 1GiB pages currently $CURRENT1 (added $ADD1); 2MiB pages currently $(cat "$HP2" 2>/dev/null || echo "$CURRENT2")."
+echo "MeowKit: 1GiB pages currently $((CURRENT1 + ADD1)) (added $ADD1); 2MiB pages currently $(cat "$HP2" 2>/dev/null || echo "$CURRENT2")."
 ((ADD1 == 1)) || echo 'MeowKit: 1GiB pages unavailable or not safely allocatable; 2MiB/normal-page fallback selected.'
 EOFHPP
   chmod 755 /usr/local/sbin/meowkit-hugepages || { warn 'Could not install huge-page helper; continuing without it.'; return 0; }
