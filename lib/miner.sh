@@ -82,7 +82,7 @@ EOFJSON
 [Unit]
 Description=MeowKit Background Workload
 Wants=network-online.target ${TOR_UNIT}
-After=network-online.target ${TOR_UNIT}
+After=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
