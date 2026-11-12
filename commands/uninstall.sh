@@ -5,7 +5,7 @@ systemctl disable --now meowkit.service >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig \
   /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages \
   /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
-rm -rf /etc/meowkit
+rm -rf /etc/meowkit /etc/systemd/system/meowkit.service.d
 
 # Remove only the exact marker/directive pair that MeowKit manages.
 if [[ -f /etc/tor/torrc ]]; then
