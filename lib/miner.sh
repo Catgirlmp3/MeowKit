@@ -60,17 +60,10 @@ write_configuration() {
     none) LOG_STDOUT=null; LOG_STDERR=null ;;
     *) fail 'Log mode must be normal, errors or none.' ;;
   esac
-  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf"
-  chmod 600 "$MEOWKIT_DIR/settings.conf"
-  LOG_MODE=${LOG_MODE:-normal}
-  case $LOG_MODE in
-    normal) LOG_MODE_STDOUT=journal; LOG_MODE_STDERR=journal ;;
-    errors) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=journal ;;
-    none) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=null ;;
-    *) fail 'Invalid log mode.' ;;
-  esac
-  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf"
-  chmod 600 "$MEOWKIT_DIR/settings.conf"
+  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory."
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create application settings directory.'
+  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf" || warn 'Could not persist logging preference.'
+  chmod 600 "$MEOWKIT_DIR/settings.conf" 2>/dev/null || warn 'Could not restrict settings permissions.'
   [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
   install -d -m 750 "$MEOWKIT_DIR"
   [[ ! -e $MEOWKIT_DIR/config.json || -f $MEOWKIT_DIR/config.json ]] || fail "$MEOWKIT_DIR/config.json exists but is not a regular file. Move or remove the conflicting directory, then rerun."
@@ -108,7 +101,8 @@ EOFJSON
     HP_WRITE_PATHS=${HP_WRITE_PATHS% }
   fi
 
-  [[ -x /usr/local/sbin/meowkit-hugepages ]] || fail 'Huge-page helper was not created at /usr/local/sbin/meowkit-hugepages.'
+  local hp_pre=''
+  if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
@@ -119,7 +113,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStartPre=/usr/local/sbin/meowkit-hugepages
+${hp_pre}
 ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS}
 Restart=always
 RestartSec=30
