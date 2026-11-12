@@ -55,6 +55,15 @@ write_configuration() {
   begin_step 'Validated miner configuration'
   LOG_MODE=${LOG_MODE:-normal}
   case $LOG_MODE in
+    normal) LOG_STDOUT=journal; LOG_STDERR=journal ;;
+    errors) LOG_STDOUT=null; LOG_STDERR=journal ;;
+    none) LOG_STDOUT=null; LOG_STDERR=null ;;
+    *) fail 'Log mode must be normal, errors or none.' ;;
+  esac
+  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf"
+  chmod 600 "$MEOWKIT_DIR/settings.conf"
+  LOG_MODE=${LOG_MODE:-normal}
+  case $LOG_MODE in
     normal) LOG_MODE_STDOUT=journal; LOG_MODE_STDERR=journal ;;
     errors) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=journal ;;
     none) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=null ;;
@@ -122,8 +131,8 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${MEOWKIT_DIR} ${HP_WRITE_PATHS}
-StandardOutput=journal
-StandardError=journal
+StandardOutput=${LOG_STDOUT}
+StandardError=${LOG_STDERR}
 SyslogIdentifier=meowkit
 
 [Install]
