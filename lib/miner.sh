@@ -120,8 +120,8 @@ run_install() {
   require_cmd systemctl
   require_cmd apt-get
   require_cmd dpkg-query
-  detect_resources
   bootstrap_tor
+  detect_resources
   require_cmd tar
   require_cmd gzip
   require_cmd sha256sum
