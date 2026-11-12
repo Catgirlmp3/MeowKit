@@ -44,35 +44,31 @@ RAM_PERCENT=75; THREADS=1
 [[ $THREADS =~ ^[0-9]+$ ]] || THREADS=1
 TOTAL=$(awk '/MemTotal:/ {print int($2/1024)}' /proc/meminfo)
 AVAIL=$(awk '/MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
+# Keep at least 20% of physical RAM (and at least 1 GiB) available to the host.
 RESERVE=$((TOTAL / 5)); ((RESERVE < 1024)) && RESERVE=1024
-BUDGET=$(( (AVAIL - RESERVE) * RAM_PERCENT / 100 ))
-((BUDGET < 0)) && BUDGET=0
-# RandomX needs roughly 2.5 GiB shared dataset plus modest per-thread scratch/headroom.
-TARGET=$((2800 + THREADS * 4))
+SAFE=$((AVAIL - RESERVE)); ((SAFE < 0)) && SAFE=0
+BUDGET=$((SAFE * RAM_PERCENT / 100))
+# RandomX dataset is ~2.1 GiB; reserve a modest margin and per-thread scratch.
+TARGET=$((2600 + THREADS * 4))
 ((TARGET > BUDGET)) && TARGET=$BUDGET
-# Prefer 1 GiB pages only when a whole page fits inside the safe budget.
-ONE_GB=0
-if [[ -w $HP1 ]] && ((BUDGET >= 1024)); then
-  CURRENT1=$(cat "$HP1" 2>/dev/null || echo 0)
-  if ((CURRENT1 > 0)); then
-    ONE_GB=$((CURRENT1 * 1024))
-  else
-    printf '1\n' > "$HP1" 2>/dev/null && ONE_GB=1 || true
-  fi
+CURRENT1=0; CURRENT2=0
+[[ -r $HP1 ]] && CURRENT1=$(cat "$HP1" 2>/dev/null || echo 0)
+[[ -r $HP2 ]] && CURRENT2=$(cat "$HP2" 2>/dev/null || echo 0)
+# Do not claim existing global reservations as MeowKit-owned or shrink them.
+# Opportunistically add one 1GiB page only if the full target budget permits it.
+ADD1=0
+if [[ -w $HP1 ]] && ((TARGET >= 2600 && CURRENT1 == 0)); then
+  printf '1\n' > "$HP1" 2>/dev/null && ADD1=1 || true
 fi
-REMAINING=$((TARGET - ONE_GB * 1024))
+REMAINING=$((TARGET - ADD1 * 1024))
 ((REMAINING < 0)) && REMAINING=0
-PAGES2=$(( (REMAINING + 1) / 2 ))
-if [[ -w $HP2 ]]; then
-  CURRENT=$(cat "$HP2" 2>/dev/null || echo 0)
-  # Never lower reservations owned by another service; only grow to our target.
-  if ((PAGES2 > CURRENT)); then printf '%s\n' "$PAGES2" > "$HP2" 2>/dev/null || echo 'MeowKit: 2 MiB reservation failed; using current allocation.' >&2; fi
-  echo "MeowKit: 2 MiB pages: $(cat "$HP2" 2>/dev/null || echo "$CURRENT") (target $PAGES2)."
-else
-  echo 'MeowKit: 2 MiB huge pages unavailable; continuing with normal pages.' >&2
+TARGET2=$(( (REMAINING + 1) / 2 ))
+if [[ -w $HP2 ]] && ((TARGET2 > CURRENT2)); then
+  printf '%s\n' "$TARGET2" > "$HP2" 2>/dev/null || echo 'MeowKit: 2 MiB page reservation failed; existing pages retained.' >&2
 fi
-if ((ONE_GB)); then echo 'MeowKit: optional 1 GiB page reserved.'; else echo 'MeowKit: 1 GiB pages unavailable or insufficient safe RAM; skipped.'; fi
-EOFHP
+echo "MeowKit: 1GiB pages currently $CURRENT1 (added $ADD1); 2MiB pages currently $(cat "$HP2" 2>/dev/null || echo "$CURRENT2")."
+((ADD1 == 1)) || echo 'MeowKit: 1GiB pages unavailable or not safely allocatable; 2MiB/normal-page fallback selected.'
+EOFHPP
   chmod 755 /usr/local/sbin/meowkit-hugepages || { warn 'Could not install huge-page helper; continuing without it.'; return 0; }
   /usr/local/sbin/meowkit-hugepages || warn 'Huge-page helper failed; continuing with kernel defaults.'
 }
