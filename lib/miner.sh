@@ -115,11 +115,16 @@ EOFUNIT
 
 run_install() {
   CURRENT_STEP=preflight
+  # Only require commands available on a minimal Debian/Ubuntu base install
+  # before bootstrapping. python3/curl/tar/gzip are installed by bootstrap_tor.
   require_cmd systemctl
   require_cmd apt-get
-  require_cmd python3
+  require_cmd dpkg-query
   detect_resources
   bootstrap_tor
+  require_cmd tar
+  require_cmd gzip
+  require_cmd sha256sum
   configure_msr
   configure_hugepages
   install_xmrig
