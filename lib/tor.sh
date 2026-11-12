@@ -3,20 +3,42 @@ bootstrap_tor() {
   begin_step 'Tor bootstrap'
   export DEBIAN_FRONTEND=noninteractive
 
-  # Check Debian package state rather than only looking for the executable.
-  # A stray tor binary is not proof that the package's systemd units are installed.
-  local packages=(tor curl python3 tar gzip ca-certificates)
-  local missing=() package status
+  # Install Tor first, before refreshing package indexes or installing the
+  # other tools. This allows a valid cached Debian package index to bootstrap
+  # Tor even when an unrelated APT source (for example, an unsubscribed
+  # Proxmox enterprise repository) rejects apt-get update.
+  local status package
+  status=$(dpkg-query -W -f='${db:Status-Status}' tor 2>/dev/null || true)
+  if [[ $status != installed ]]; then
+    info 'Installing Tor first from the currently available APT package indexes.'
+    if ! apt-get install -y tor; then
+      info 'Tor was not installable from the cached indexes; refreshing APT indexes and retrying.'
+      apt-get update || info 'APT index refresh reported errors; retrying with the indexes that were downloaded.'
+      apt-get install -y tor || fail 'Could not install Tor. Check the Debian repository configuration and package-index errors above.'
+    fi
+  fi
+
+  # Install the remaining runtime/download tools only after Tor is present.
+  # Prefer cached indexes; refresh and retry only if the package install needs it.
+  local packages=(curl python3 tar gzip ca-certificates)
+  local missing=()
   for package in "${packages[@]}"; do
     status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null || true)
     [[ $status == installed ]] || missing+=("$package")
   done
 
   if (("${#missing[@]}" > 0)); then
-    info "Installing missing packages: ${missing[*]}"
-    apt-get update -qq || fail 'Package index update failed while installing Tor prerequisites.'
-    apt-get install -y "${missing[@]}" || fail 'Could not install Tor and its required packages.'
+    info "Installing remaining prerequisites: ${missing[*]}"
+    if ! apt-get install -y "${missing[@]}"; then
+      info 'Prerequisite installation failed with the cached indexes; refreshing APT indexes and retrying.'
+      apt-get update || info 'APT index refresh reported errors; retrying with the indexes that were downloaded.'
+      apt-get install -y "${missing[@]}" || fail 'Could not install the remaining MeowKit prerequisites. Check the APT errors above.'
+    fi
   fi
+
+  require_cmd tor
+  require_cmd curl
+  require_cmd python3
 
   command -v tor >/dev/null 2>&1 || fail 'The Tor package is installed but the tor executable is missing.'
   install -d -m 755 /etc/tor
