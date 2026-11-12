@@ -75,8 +75,19 @@ EOFJSON
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
   write_tor_check
-  HP_WRITE_PATHS='/sys/kernel/mm/hugepages/hugepages-2048kB'
-  [[ -d /sys/kernel/mm/hugepages/hugepages-1048576kB ]] && HP_WRITE_PATHS+='/sys/kernel/mm/hugepages/hugepages-1048576kB'
+  # Only expose huge-page sysfs paths that actually exist on this kernel.
+  # Keep each path a separate systemd ReadWritePaths argument; concatenating
+  # them without whitespace creates one invalid path and breaks namespace setup.
+  local hp_write_paths=()
+  [[ -d /sys/kernel/mm/hugepages/hugepages-2048kB ]] && hp_write_paths+=(/sys/kernel/mm/hugepages/hugepages-2048kB)
+  [[ -d /sys/kernel/mm/hugepages/hugepages-1048576kB ]] && hp_write_paths+=(/sys/kernel/mm/hugepages/hugepages-1048576kB)
+  local HP_WRITE_PATHS=''
+  if (("${#hp_write_paths[@]}" > 0)); then
+    printf -v HP_WRITE_PATHS '%s ' "${hp_write_paths[@]}"
+    HP_WRITE_PATHS=${HP_WRITE_PATHS% }
+  fi
+
+  [[ -x /usr/local/sbin/meowkit-hugepages ]] || fail 'Huge-page helper was not created at /usr/local/sbin/meowkit-hugepages.'
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
