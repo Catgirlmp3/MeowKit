@@ -4,10 +4,13 @@ POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
 
 worker_name() {
-  local idfile="$MEOWKIT_DIR/worker-id" id=1
-  install -d -m 750 "$MEOWKIT_DIR"
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then id=$(<"$idfile"); else printf '%s\n' "$id" > "$idfile"; chmod 600 "$idfile"; fi
-  RIG_NAME="meow$id"
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create settings directory.'
+  if [[ -z ${WORKER_NAME:-} && -f $MEOWKIT_DIR/worker-name ]]; then WORKER_NAME=$(<"$MEOWKIT_DIR/worker-name"); fi
+  WORKER_NAME=${WORKER_NAME:-$(hostname -s 2>/dev/null || echo meow-worker)}
+  [[ $WORKER_NAME =~ ^[A-Za-z0-9._-]{1,32}$ ]] || fail 'Worker name must be 1-32 chars: letters, numbers, dot, underscore or hyphen.'
+  RIG_NAME=$WORKER_NAME
+  printf '%s\n' "$RIG_NAME" > "$MEOWKIT_DIR/worker-name" || fail 'Could not save worker name.'
+  chmod 600 "$MEOWKIT_DIR/worker-name" || warn 'Could not restrict worker-name permissions.'
 }
 
 install_xmrig() {
@@ -50,6 +53,15 @@ EOFCHK
 
 write_configuration() {
   begin_step 'Validated miner configuration'
+  LOG_MODE=${LOG_MODE:-normal}
+  case $LOG_MODE in
+    normal) LOG_MODE_STDOUT=journal; LOG_MODE_STDERR=journal ;;
+    errors) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=journal ;;
+    none) LOG_MODE_STDOUT=null; LOG_MODE_STDERR=null ;;
+    *) fail 'Invalid log mode.' ;;
+  esac
+  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf"
+  chmod 600 "$MEOWKIT_DIR/settings.conf"
   [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
   install -d -m 750 "$MEOWKIT_DIR"
   [[ ! -e $MEOWKIT_DIR/config.json || -f $MEOWKIT_DIR/config.json ]] || fail "$MEOWKIT_DIR/config.json exists but is not a regular file. Move or remove the conflicting directory, then rerun."
