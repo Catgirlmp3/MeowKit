@@ -101,7 +101,9 @@ restart_verify(){
 }
 if restart_verify "$THREADS" 3; then log "Schedule applied: $THREADS threads."; exit 0; fi
 log "New start failed; rolling configuration back."
+exec 8>"$D/.config.lock"; flock -x 8
 cp -a "$TMP/config.old" "$CFG"; cp -a "$TMP/runtime.old" "$ENV"
+flock -u 8; exec 8>&-
 systemctl daemon-reload || true
 OLD=$(sed -n 's/^MEOWKIT_THREADS=//p' "$ENV" | head -n1)
 if [[ $OLD =~ ^[1-9][0-9]*$ ]] && restart_verify "$OLD" 2; then
