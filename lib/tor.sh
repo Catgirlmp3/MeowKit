@@ -10,6 +10,9 @@ bootstrap_tor() {
   command -v python3 >/dev/null 2>&1 || missing+=(python3)
   command -v tar >/dev/null 2>&1 || missing+=(tar)
   command -v gzip >/dev/null 2>&1 || missing+=(gzip)
+  command -v rdmsr >/dev/null 2>&1 || missing+=(msr-tools)
+  command -v modprobe >/dev/null 2>&1 || missing+=(kmod)
+  command -v flock >/dev/null 2>&1 || missing+=(util-linux)
   [[ -s /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
   if (("${#missing[@]}" > 0)); then
     info "Installing missing prerequisites: ${missing[*]}"

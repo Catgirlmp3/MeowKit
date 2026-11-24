@@ -1,4 +1,4 @@
-# MeowKit 2.0.5
+# MeowKit 2.1.0
 
 MeowKit is a Linux-only setup and service manager for an XMRig workload connected to MoneroOcean through a local Tor SOCKS5 proxy. It configures the miner, systemd service and supported CPU/memory optimisations for you.
 
@@ -31,7 +31,7 @@ These are example values, not minimum requirements. Give the VM enough memory an
 
 ### A couple of important notes
 
-- **Do not manually reserve huge pages before installing.** MeowKit calculates and requests 2 MiB huge pages itself, then retries the allocation before the miner starts and at service startup after reboot.
+- **Do not manually reserve huge pages before installing.** MeowKit calculates a safe memory budget, attempts three 1 GiB RandomX pages per NUMA node when the kernel permits runtime reservation, then uses 2 MiB pages for the fallback. Some kernels require 1 GiB pages to be reserved at boot; MeowKit does not modify GRUB or reboot automatically.
 - **Do not disable `systemd-oomd` as a routine setup step.** That is not required by MeowKit and can make memory pressure less manageable. If the VM runs out of memory, reduce the miner's resource allocation or give the VM more RAM instead.
 - Tor routes the miner's pool connection through a Tor exit relay. The pool does not receive your normal public IP from that connection, but Tor is not a guarantee of anonymity and the exit relay's IP is visible to the destination.
 - Virtual machines may not expose the CPU's MSR interface. MeowKit attempts to load MSR support where available and continues if the hypervisor or kernel blocks it.
@@ -49,7 +49,7 @@ sudo apt install -y git
 
 Git is needed to retrieve the repository. MeowKit installs its own runtime prerequisites, including Tor and the tools it needs, during setup.
 
-You do not need to add manual `vm.nr_hugepages` settings to `/etc/sysctl.conf`. MeowKit manages its 2 MiB huge-page allocation.
+You do not need to add manual `vm.nr_hugepages` settings to `/etc/sysctl.conf`. MeowKit attempts runtime 1 GiB page allocation and calculates the 2 MiB fallback automatically.
 
 ## 2. Download MeowKit
 
@@ -102,10 +102,11 @@ During installation, MeowKit:
 - Starts Tor and checks the Tor Project verification endpoint for `IsTor: true`.
 - Downloads the pinned XMRig release through Tor and verifies its SHA-256 digest before installing it.
 - Detects available logical CPUs and calculates the miner thread count and systemd CPU quota.
-- Requests 2 MiB huge pages using a memory budget that keeps a 2 GiB host reserve and, on Proxmox, accounts for configured memory assigned to running guests.
-- Loads the MSR kernel module where supported and configures it to load at boot.
-- Writes the miner configuration and creates `meowkit.service`.
-- Enables the service at boot and starts it.
+- Calculates a memory budget with a 2 GiB host reserve and Proxmox running-guest memory reservations; attempts three 1 GiB pages per NUMA node, then reserves 2 MiB pages as a fallback.
+- Loads the MSR module where supported, enables the live `msr.allow_writes` parameter when exposed, and verifies read access with a non-destructive `rdmsr` probe.
+- Creates a local-time mining schedule (default 08:00–16:00 at 8 threads, baseline allocation outside that window) and installs a systemd timer that checks it every minute.
+- Writes the miner configuration and creates `meowkit.service` with an explicit `--threads=N` setting, graceful SIGTERM shutdown and systemd restart recovery.
+- Enables the service and schedule timer at boot and starts the miner.
 
 The miner service runs as root, as configured by this project. Miner traffic is configured to use the local Tor proxy, and the service has a pre-start Tor verification check. If that check fails, systemd will not launch the miner.
 
@@ -127,7 +128,7 @@ You can also use MeowKit's status command:
 sudo ./meowkit.sh --status
 ```
 
-It reports the service state, whether it is enabled at boot, Tor service state, Tor exit verification, 2 MiB huge-page reservation and whether the MSR module is loaded.
+It reports the active thread count, schedule/timer state, Tor service and exit verification, 2 MiB/1 GiB page reservations, and whether MSR is loaded with write permission and read access.
 
 If the service is not active, do not assume the install succeeded just because the installer reached its final message. Read the logs in the next step to find the cause.
 
@@ -183,6 +184,8 @@ Run these from the MeowKit repository directory unless the command is a standard
 | Task | Command |
 |---|---|
 | Show MeowKit status | `sudo ./meowkit.sh --status` |
+| Preview the selected thread count | `sudo ./meowkit.sh --schedule-dry-run` |
+| Apply the current schedule immediately | `sudo ./meowkit.sh --schedule` |
 | Repair the installation | `sudo ./meowkit.sh --repair --verbose` |
 | Start the service | `sudo systemctl start meowkit.service` |
 | Stop the service | `sudo systemctl stop meowkit.service` |
@@ -197,21 +200,27 @@ Repair preserves a valid installed XMRig binary, the existing worker identity an
 
 ### CPU
 
-The CPU percentage controls XMRig's thread hint and the systemd CPU quota. The quota is calculated from the total number of logical CPUs, rather than from the rounded-down miner thread count. This helps keep the requested percentage consistent on systems where the thread count does not divide evenly.
+The CPU percentage determines the baseline thread count and systemd CPU quota. MeowKit passes an explicit `--threads=N` value to XMRig, so a scheduled limit is an exact thread count rather than relying on XMRig's percentage-based `max-threads-hint`. The configured quota remains the baseline ceiling; the thread count controls the daytime reduction.
 
 On Proxmox hosts with running guests, MeowKit uses a more conservative default CPU allocation unless you explicitly choose a custom value.
 
-### 2 MiB huge pages
+### Time-based mining schedule
 
-MeowKit allocates standard 2 MiB huge pages. It does not request 1 GiB pages or permanently change bootloader settings.
+The default schedule uses the machine's configured local timezone (`Europe/Dublin` by default): 8 threads from 08:00 up to (but not including) 16:00, then the detected baseline allocation for the rest of the day. A systemd timer checks the schedule every minute and applies changes automatically. The timer does not restart a healthy miner on every check; it only restarts when the selected allocation changes or when the installation/repair process explicitly requests a refresh.
 
-The memory budget is calculated from physical RAM, less a 2 GiB host reserve and (on Proxmox) the configured memory of running VMs and containers. The selected percentage is applied to the remaining budget. Existing huge-page reservations are not reduced.
+Edit `/etc/meowkit/schedule.conf` to change `DAY_START`, `DAY_END`, `DAY_THREADS`, `SCHEDULE_ENABLED` or `TIMEZONE`. For a different local timezone, use its IANA name (for example `Europe/Dublin`). The controller uses the Linux machine's configured timezone, not a separate remote Windows clock.
 
-For a small VM, leave enough memory for Ubuntu and other services. If the guest becomes sluggish or reports memory pressure, use the custom installation option to lower the huge-page budget or increase the VM's assigned RAM.
+Preview the next/current selection with `sudo ./meowkit.sh --schedule-dry-run`; apply the current selection immediately with `sudo ./meowkit.sh --schedule`.
+
+### 1 GiB and 2 MiB huge pages
+
+MeowKit calculates a safe memory budget after a 2 GiB host reserve and Proxmox running-guest reservations. It attempts three 1 GiB RandomX pages per NUMA node only when the kernel exposes a writable 1 GiB pool and the full target fits inside that budget. If allocation is unsupported or incomplete, XMRig's 1 GiB option remains disabled and 2 MiB huge pages are used instead. Existing reservations are not reduced.
+
+Some kernels only permit 1 GiB huge pages to be reserved at boot. MeowKit does not automatically alter GRUB/kernel command-line settings or reboot; in those environments it falls back to 2 MiB pages. For a small VM, leave enough RAM for the operating system and any other workloads.
 
 ### MSR
 
-MeowKit configures the MSR module to load at boot and enables write support where the running kernel exposes that setting. Some kernels, CPUs and hypervisors restrict MSR access. In those environments, the optimisation may be unavailable; MeowKit reports the limitation and continues.
+MeowKit loads the MSR module at boot, requests `allow_writes=on`, and explicitly attempts to set the live `/sys/module/msr/parameters/allow_writes` value when the kernel exposes it. It then performs a read-only `rdmsr` probe. A successful read does not guarantee that every write is permitted; Secure Boot/kernel lockdown and hypervisors can restrict access. MeowKit does not issue generic arbitrary WRMSR commands. XMRig handles CPU-specific RandomX MSR presets and restores the values it changes when it exits.
 
 ## Troubleshooting
 
@@ -249,7 +258,7 @@ Each page represents 2 MiB. Do not blindly force a larger number: leave memory f
 
 ### MSR is unavailable in VirtualBox
 
-This can be a hypervisor limitation rather than a MeowKit fault. The guest may not be allowed to access the host CPU's MSR interface. MeowKit can continue without this optimisation.
+This can be a hypervisor limitation rather than a MeowKit fault. Check `sudo /usr/local/sbin/meowkit-msr-enable`, `/sys/module/msr/parameters/allow_writes`, and whether `rdmsr -p 0 0x10` succeeds. Secure Boot/kernel lockdown or the hypervisor may still block MSR access; MeowKit safely continues without the optimisation.
 
 ### Repair the managed setup
 

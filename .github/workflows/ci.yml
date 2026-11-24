@@ -18,9 +18,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n meowkit.sh lib/*.sh commands/*.sh
-          awk '/^  cat > \/usr\/local\/sbin\/meowkit-hugepages <<'\''EOFHP'\''$/ { inside=1; next } inside && /^EOFHP$/ { exit } inside { print }' lib/system.sh > /tmp/meowkit-hugepages
-          bash -n /tmp/meowkit-hugepages
+          bash -n meowkit.sh lib/*.sh commands/*.sh tests/*.sh
+      - name: Test mining schedule boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/schedule.sh
       - name: Check README formatting
+        shell: bash
         run: |
           ! grep -Fq '\\n\\n' README.md

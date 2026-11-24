@@ -18,14 +18,16 @@ RAM_PERCENT=${RAM_PERCENT:-75}
 usage() {
   cat <<'TXT'
 MeowKit
-Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install|--repair]
+Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install|--repair|--schedule|--schedule-dry-run]
 
-  --quiet     Minimal installer output (default)
-  --verbose   Show detailed progress
-  --status    Show service and Tor status
-  --install   Run the installer
-  --repair    Repair missing or invalid components and restart the service
-  --help      Show this help
+  --quiet              Minimal installer output (default)
+  --verbose            Show detailed progress
+  --status             Show service, schedule, huge-page and MSR status
+  --install            Run the installer
+  --repair             Repair managed components and restart the miner
+  --schedule           Recalculate and apply the current time-based thread limit
+  --schedule-dry-run   Show which thread count the current schedule selects
+  --help               Show this help
 TXT
 }
 
@@ -36,6 +38,8 @@ while (($#)); do
     --status) ACTION=status ;;
     --install) ACTION=install ;;
     --repair) ACTION=repair ;;
+    --schedule) ACTION=schedule ;;
+    --schedule-dry-run) ACTION=schedule_dry_run ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
   esac
@@ -49,6 +53,16 @@ fi
 
 if [[ $ACTION == status ]]; then
   "$ROOT/commands/status.sh"
+  exit $?
+fi
+
+if [[ $ACTION == schedule || $ACTION == schedule_dry_run ]]; then
+  [[ -x /usr/local/sbin/meowkit-schedule ]] || fail 'The installed MeowKit scheduler is missing; run --repair.'
+  if [[ $ACTION == schedule ]]; then
+    /usr/local/sbin/meowkit-schedule --apply
+  else
+    /usr/local/sbin/meowkit-schedule --dry-run
+  fi
   exit $?
 fi
 
@@ -100,7 +114,12 @@ fi
 
 if [[ $ACTION == repair ]]; then
   REPAIR=1
-  if ((CPU_PERCENT_EXPLICIT == 0)) && [[ -f /etc/meowkit/config.json ]]; then
+  if [[ -r /etc/meowkit/resources.conf ]]; then
+    # Preserve the installer's original baseline percentage, not the daytime hint.
+    # shellcheck source=/dev/null
+    source /etc/meowkit/resources.conf
+    [[ ${CPU_PERCENT:-} =~ ^[0-9]+$ ]] && CPU_PERCENT_EXPLICIT=1
+  elif ((CPU_PERCENT_EXPLICIT == 0)) && [[ -f /etc/meowkit/config.json ]]; then
     saved_cpu=$(sed -n 's/.*"max-threads-hint":[[:space:]]*\([0-9][0-9]*\).*/\1/p' /etc/meowkit/config.json | head -n1)
     [[ $saved_cpu =~ ^[0-9]+$ ]] && CPU_PERCENT=$saved_cpu && CPU_PERCENT_EXPLICIT=1
   fi
@@ -108,7 +127,7 @@ if [[ $ACTION == repair ]]; then
     # This file is created and owned by MeowKit; keep the previous RAM setting.
     source /etc/meowkit/hugepages.conf
   fi
-  info 'Repair mode: checking managed components and preserving the existing worker identity and resource settings.'
+  info 'Repair mode: preserving the worker identity, CPU baseline and custom mining schedule.'
 fi
 run_install
 

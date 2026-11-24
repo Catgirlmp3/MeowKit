@@ -58,14 +58,19 @@ write_configuration() {
   begin_step 'Miner configuration'
   install -d -m 750 "$MEOWKIT_DIR"
   worker_name
+  local cpu_hint one_gb_json
+  cpu_hint=$(((THREADS * 100 + TOTAL_THREADS - 1) / TOTAL_THREADS))
+  (( cpu_hint > 100 )) && cpu_hint=100
+  one_gb_json=false
+  [[ ${ONE_GB_PAGES:-0} == 1 ]] && one_gb_json=true
   cat > "$MEOWKIT_DIR/config.json" <<EOFJSON
 {
   "autosave": false,
   "background": false,
   "colors": false,
   "title": false,
-  "randomx": { "init": -1, "mode": "auto", "1gb-pages": false, "rdmsr": true, "wrmsr": true, "numa": true },
-  "cpu": { "enabled": true, "huge-pages": true, "huge-pages-jit": true, "priority": 1, "yield": true, "max-threads-hint": ${CPU_PERCENT}, "asm": true },
+  "randomx": { "init": -1, "mode": "auto", "1gb-pages": ${one_gb_json}, "rdmsr": true, "wrmsr": true, "numa": true },
+  "cpu": { "enabled": true, "huge-pages": true, "huge-pages-jit": true, "priority": 1, "yield": true, "max-threads-hint": ${cpu_hint}, "asm": true },
   "opencl": { "enabled": false },
   "cuda": { "enabled": false },
   "pools": [
@@ -74,22 +79,27 @@ write_configuration() {
 }
 EOFJSON
   chmod 640 "$MEOWKIT_DIR/config.json"
+  printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$MEOWKIT_DIR/runtime.env"
+  chmod 640 "$MEOWKIT_DIR/runtime.env"
   write_tor_check
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
 Description=MeowKit Background Workload
-After=network-online.target ${TOR_UNIT}
-Wants=network-online.target ${TOR_UNIT}
+After=network-online.target systemd-modules-load.service meowkit-msr.service ${TOR_UNIT}
+Wants=network-online.target meowkit-msr.service ${TOR_UNIT}
 Requires=${TOR_UNIT}
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+EnvironmentFile=${MEOWKIT_DIR}/runtime.env
 ExecStartPre=/usr/local/sbin/meowkit-hugepages
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS} --proxy=socks5://127.0.0.1:9050 --huge-pages-jit
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=\${MEOWKIT_THREADS} --proxy=socks5://127.0.0.1:9050 --huge-pages-jit
 Restart=always
 RestartSec=15
+TimeoutStopSec=60
+KillSignal=SIGTERM
 Nice=10
 CPUWeight=20
 CPUQuota=${CPU_QUOTA}%
@@ -97,7 +107,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB
+ReadWritePaths=${MEOWKIT_DIR} /sys/kernel/mm/hugepages/hugepages-2048kB -/sys/kernel/mm/hugepages/hugepages-1048576kB
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=meowkit
@@ -108,16 +118,20 @@ EOFUNIT
   chmod 644 "$MEOWKIT_SERVICE"
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
-  systemctl restart meowkit.service || fail 'MeowKit service failed to start. Check Tor connectivity and XMRig configuration.'
+  MEOWKIT_FORCE_RESTART=1 /usr/local/sbin/meowkit-schedule --apply || fail 'The scheduled miner configuration could not be applied. Check journalctl -u meowkit-schedule.service and meowkit.service.'
+  systemctl enable --now meowkit-schedule.timer >/dev/null 2>&1 || fail 'Could not enable the MeowKit schedule timer.'
+  systemctl is-active --quiet meowkit.service || fail 'MeowKit service did not remain active after the scheduled start.'
 }
 
 run_install() {
   CURRENT_STEP='preflight'
   require_cmd systemctl
   require_cmd apt-get
+  systemctl stop meowkit-schedule.timer meowkit-schedule.service >/dev/null 2>&1 || true
   detect_resources
   bootstrap_tor
   configure_msr
+  configure_schedule
   configure_hugepages
   install_xmrig
   write_configuration

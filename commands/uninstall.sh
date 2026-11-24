@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-systemctl disable --now meowkit.service >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig \
-  /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages \
-  /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
+systemctl disable --now meowkit-schedule.timer >/dev/null 2>&1 || true
+systemctl stop meowkit-schedule.service meowkit-msr.service meowkit.service >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-schedule.service \
+  /etc/systemd/system/meowkit-schedule.timer /etc/systemd/system/meowkit-msr.service \
+  /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-tor-check \
+  /usr/local/sbin/meowkit-hugepages /usr/local/sbin/meowkit-schedule \
+  /usr/local/sbin/meowkit-msr-enable /etc/modules-load.d/meowkit-msr.conf \
+  /etc/modprobe.d/meowkit-msr.conf
 rm -rf /etc/meowkit
 
 # Remove only the exact marker/directive pair that MeowKit manages.
@@ -33,4 +37,5 @@ if [[ -f /etc/tor/torrc ]]; then
   fi
 fi
 systemctl daemon-reload
+systemctl reset-failed meowkit.service meowkit-schedule.service meowkit-msr.service 2>/dev/null || true
 printf 'MeowKit components removed. Tor itself, gateway settings, SSH settings and unrelated services were left intact.\n'
