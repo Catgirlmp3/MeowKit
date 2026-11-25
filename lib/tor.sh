@@ -49,16 +49,23 @@ bootstrap_tor() {
   # responsive and has its own bounded timeout.
   systemctl --no-block restart "$TOR_UNIT" || fail "Could not queue restart of $TOR_UNIT."
 
-  local deadline=$((SECONDS + 180)) response
+  # Do not capture curl with command substitution here. The installer uses
+  # an ERR trap with errtrace (-E); a failing curl inside $(...) runs in a
+  # subshell and can invoke that trap even though the probe is an expected
+  # retry condition. Write the response to a file and test curl directly.
+  local deadline=$((SECONDS + 180)) response_file
+  response_file=$(mktemp /tmp/meowkit-tor-check.XXXXXX) || fail 'Could not create a temporary Tor verification file.'
   while ((SECONDS < deadline)); do
-    if response=$(curl --connect-timeout 3 --max-time 8 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null) &&
-       printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
+    if curl --connect-timeout 3 --max-time 8 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip >"$response_file" 2>/dev/null &&
+       python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' <"$response_file" 2>/dev/null; then
+      rm -f -- "$response_file"
       info 'Tor is running and the Tor Project API confirms the connection is using Tor.'
       return 0
     fi
     sleep 5
   done
 
+  rm -f -- "$response_file"
   printf '\n[MeowKit] Tor startup diagnostics for %s:\n' "$TOR_UNIT" >&2
   systemctl status "$TOR_UNIT" --no-pager --full >&2 || true
   journalctl -u "$TOR_UNIT" -n 40 --no-pager >&2 || true
