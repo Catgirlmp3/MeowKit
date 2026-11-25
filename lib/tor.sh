@@ -53,14 +53,19 @@ bootstrap_tor() {
   # an ERR trap with errtrace (-E); a failing curl inside $(...) runs in a
   # subshell and can invoke that trap even though the probe is an expected
   # retry condition. Write the response to a file and test curl directly.
-  local deadline=$((SECONDS + 180)) response_file
+  local deadline=$((SECONDS + 180)) started_at=$SECONDS next_notice=$((SECONDS + 20)) response_file
   response_file=$(mktemp /tmp/meowkit-tor-check.XXXXXX) || fail 'Could not create a temporary Tor verification file.'
+  info 'Tor service restart queued; waiting for SOCKS connectivity (maximum 180 seconds).'
   while ((SECONDS < deadline)); do
     if curl --connect-timeout 3 --max-time 8 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip >"$response_file" 2>/dev/null &&
        python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' <"$response_file" 2>/dev/null; then
       rm -f -- "$response_file"
       info 'Tor is running and the Tor Project API confirms the connection is using Tor.'
       return 0
+    fi
+    if ((SECONDS >= next_notice)); then
+      info "Still waiting for Tor SOCKS/API connectivity ($((SECONDS - started_at))s elapsed; $((deadline - SECONDS))s remaining)."
+      next_notice=$((SECONDS + 20))
     fi
     sleep 5
   done
