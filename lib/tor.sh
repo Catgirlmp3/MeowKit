@@ -41,19 +41,28 @@ bootstrap_tor() {
     fail 'No supported Tor systemd unit was found.'
   fi
   systemctl enable "$TOR_UNIT" >/dev/null 2>&1 || fail "Could not enable $TOR_UNIT at boot."
-  systemctl restart "$TOR_UNIT" || fail "Could not start/restart $TOR_UNIT."
 
-  local ok=0 response
-  for _ in {1..18}; do
-    if response=$(curl --connect-timeout 5 --max-time 12 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null) &&
+  # Debian's Tor unit is commonly Type=notify. A synchronous "systemctl
+  # restart" waits for Tor's READY notification, which may be delayed while
+  # Tor bootstraps (or never arrive on a restricted network). Queue the job
+  # and independently probe the SOCKS listener so the installer remains
+  # responsive and has its own bounded timeout.
+  systemctl restart --no-block "$TOR_UNIT" || fail "Could not queue restart of $TOR_UNIT."
+
+  local deadline=$((SECONDS + 180)) response
+  while ((SECONDS < deadline)); do
+    if response=$(curl --connect-timeout 3 --max-time 8 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null) &&
        printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
-      ok=1
-      break
+      info 'Tor is running and the Tor Project API confirms the connection is using Tor.'
+      return 0
     fi
     sleep 5
   done
-  ((ok == 1)) || fail 'Tor did not verify as a Tor exit within 90 seconds. Check relay reachability, clock and firewall.'
-  info 'Tor is running and the Tor Project API confirms the connection is using Tor.'
+
+  printf '\n[MeowKit] Tor startup diagnostics for %s:\n' "$TOR_UNIT" >&2
+  systemctl status "$TOR_UNIT" --no-pager --full >&2 || true
+  journalctl -u "$TOR_UNIT" -n 40 --no-pager >&2 || true
+  fail 'Tor did not become usable through SOCKS within 180 seconds. See the service diagnostics above; check outbound relay access, clock and firewall.'
 }
 
 curl_tor() {
