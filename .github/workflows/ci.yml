@@ -24,6 +24,11 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/schedule.sh
+      - name: Test Tor bootstrap does not block on systemd readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/tor-bootstrap.sh
       - name: Check README formatting
         shell: bash
         run: |
