@@ -47,7 +47,7 @@ bootstrap_tor() {
   # Tor bootstraps (or never arrive on a restricted network). Queue the job
   # and independently probe the SOCKS listener so the installer remains
   # responsive and has its own bounded timeout.
-  systemctl restart --no-block "$TOR_UNIT" || fail "Could not queue restart of $TOR_UNIT."
+  systemctl --no-block restart "$TOR_UNIT" || fail "Could not queue restart of $TOR_UNIT."
 
   local deadline=$((SECONDS + 180)) response
   while ((SECONDS < deadline)); do
