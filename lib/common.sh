@@ -14,9 +14,10 @@ info() { printf '[+] %s\n' "$*"; }
 fail() { printf '\n[!] MEOWKIT ERROR\nStep: %s\nProblem: %s\n' "$CURRENT_STEP" "$*" >&2; printf 'Suggested checks: verify network access, available disk space and systemd status.\n' >&2; cleanup_temp; if [[ -t 1 ]]; then sleep 15; clear 2>/dev/null || printf '\033[2J\033[H'; fi; exit 1; }
 cleanup_temp() { [[ -n ${WORKDIR:-} && -d ${WORKDIR:-} ]] && rm -rf -- "$WORKDIR"; }
 handle_unexpected_error() {
-  local rc=$1 line=$2 command=$3
-  printf '\n[!] MEOWKIT ERROR\nStep: %s\nProblem: command failed (exit %s) near line %s.\nCommand: %s\n' \
-    "$CURRENT_STEP" "$rc" "$line" "$command" >&2
+  local rc=$1 line=$2 command=$3 location='unknown source'
+  location=$(caller 0 2>/dev/null || true)
+  printf '\n[!] MEOWKIT ERROR\nStep: %s\nProblem: command failed (exit %s).\nLocation: %s (reported line %s)\nCommand: %s\n' \
+    "$CURRENT_STEP" "$rc" "${location:-unknown source}" "$line" "$command" >&2
   printf 'Suggested fix: rerun with --verbose and check the named component/configuration.\n' >&2
   cleanup_temp
   if [[ -t 1 ]]; then sleep 15; clear 2>/dev/null || printf '\033[2J\033[H'; fi
