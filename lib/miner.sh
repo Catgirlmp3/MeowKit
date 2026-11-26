@@ -17,11 +17,6 @@ worker_name() {
 
 install_xmrig() {
   begin_step 'Bundled XMRig installation'
-  if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]] && "$MEOWKIT_BIN" --version 2>&1 | grep -Fq "$XMRIG_VERSION"; then
-    log "Existing XMRig $XMRIG_VERSION binary is valid; preserving it."
-    return 0
-  fi
-
   make_workdir
   local bundle="$ROOT/$XMRIG_BUNDLE_DIR/$XMRIG_BUNDLE_NAME"
   local bundle_sums="$ROOT/$XMRIG_BUNDLE_DIR/SHA256SUMS"
@@ -40,6 +35,16 @@ install_xmrig() {
     [[ -x $binary ]] || chmod 755 "$binary" 2>/dev/null || return 1
     "$binary" --version 2>&1 | grep -Fq "$XMRIG_VERSION"
   }
+
+  # Repair may preserve only the exact bundled build. A stock XMRig binary
+  # with the same version can still enforce the upstream 1% donation minimum.
+  if [[ ${REPAIR:-0} == 1 ]] && verify_xmrig_candidate "$MEOWKIT_BIN" "$bundle_sums"; then
+    log "Existing bundled XMRig $XMRIG_VERSION checksum is valid; preserving it."
+    return 0
+  fi
+  if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]]; then
+    info 'Existing XMRig does not match the zero-donation MeowKit build; replacing it.'
+  fi
 
   # First choice: the precompiled, zero-donation XMRig binary shipped in
   # the MeowKit repository. No compiler, source download or Tor bootstrap
