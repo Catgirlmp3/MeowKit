@@ -55,6 +55,11 @@ case "$1" in
 esac
 EOFSYSTEMCTL
 chmod +x "$TMP/bin/systemctl"
+cat > "$TMP/bin/qm" <<'EOFQM'
+#!/usr/bin/env bash
+printf ' VMID NAME STATUS\n 100 test running\n'
+EOFQM
+chmod +x "$TMP/bin/qm"
 sed -i 's/^SCHEDULE_ENABLED=1$/SCHEDULE_ENABLED=0/' "$D/resource-profile.conf"
 rm -f "$D/runtime.env" "$D/resource-state"
 : > "$TMP/systemctl.log"
