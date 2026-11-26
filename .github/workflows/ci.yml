@@ -2,7 +2,7 @@ name: Shell validation
 
 on:
   push:
-    branches: [main, meowkit-v2-restructure]
+    branches: [main, meowkit-v2-restructure, feat/modular-installer]
   pull_request:
     branches: [main]
 
