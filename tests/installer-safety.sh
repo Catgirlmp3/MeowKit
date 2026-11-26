@@ -6,6 +6,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 grep -Fq 'After=network-online.target ${TOR_UNIT}' "$ROOT/lib/miner.sh"
 grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 
+# The generated service must define the exact variable used in ExecStart,
+# and only remove systemd's conventional /dev/null mask (not arbitrary links).
+grep -Fq 'MEOWKIT_THREADS=$THREADS' "$ROOT/lib/miner.sh"
+grep -Fq 'printf \'MEOWKIT_THREADS=%s\\n\' "$MEOWKIT_THREADS"' "$ROOT/lib/miner.sh"
+grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
+grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
+
 # The timer must not pull the miner in, and the watcher must not resurrect it.
 ! grep -Fq 'Wants=meowkit.service' "$ROOT/lib/system.sh"
 grep -Fq 'Miner is not active; leaving it stopped.' "$ROOT/commands/resource-watch.sh"
