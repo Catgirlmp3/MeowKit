@@ -35,7 +35,7 @@ Usage: sudo ./meowkit.sh [--install|--repair|--status] [--threads N]
   --log-mode MODE         normal (journal), errors (stderr only), none (silent)
   --ram-percent N         Huge-page RAM budget, 1-100 (default 75)
   --cpu-percent N         Baseline CPU allocation, 1-100 (default 75)
-  --vm-mode MODE          auto, shared or dedicated
+  --vm-mode MODE          auto (adaptive), shared (50% baseline), dedicated
   --vm-reduction N        Reduce selected miner threads by N% while any Proxmox guest runs
   --day-percent N         Scheduled-window CPU allocation as % of baseline (1-100)
   --day-start HH:MM       Scheduled-window start (default 08:00)
@@ -140,7 +140,7 @@ if [[ $ACTION == install && -t 0 && -z ${MEOWKIT_NONINTERACTIVE:-} ]]; then
   if [[ $ACTION == install ]]; then
     saved_worker=''
     [[ -r /etc/meowkit/worker-name ]] && IFS= read -r saved_worker < /etc/meowkit/worker-name || true
-    suggested_name=${saved_worker:-$(hostname -s 2>/dev/null || echo meow-worker)}
+    suggested_name=${WORKER_NAME:-${saved_worker:-$(hostname -s 2>/dev/null || echo meow-worker)}}
     read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
     WORKER_NAME=${WORKER_NAME:-$suggested_name}
     printf '\nLogging: 1) normal  2) errors only  3) none\n'
