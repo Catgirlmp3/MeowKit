@@ -10,6 +10,11 @@ grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 # and only remove systemd's conventional /dev/null mask (not arbitrary links).
 grep -Fq 'MEOWKIT_THREADS=$THREADS' "$ROOT/lib/miner.sh"
 grep -Fq 'MEOWKIT_THREADS=%s' "$ROOT/lib/miner.sh"
+# systemd must expand the current EnvironmentFile thread count on every restart.
+grep -Fq -- '--threads=\${MEOWKIT_THREADS}' "$ROOT/lib/miner.sh"
+# Silent mode suppresses routine stdout but retains stderr for startup failures.
+grep -Fq 'none) LOG_STDOUT=null; LOG_STDERR=journal ;;' "$ROOT/lib/miner.sh"
+grep -Fq -- '--silent --show-error --fail --socks5-hostname' "$ROOT/lib/miner.sh"
 grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
 grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
 
@@ -50,3 +55,10 @@ if MEOWKIT_DIR="$TMP/meowkit" PATH="$TMP/bin:$PATH" bash "$ROOT/commands/resourc
 fi
 grep -Fq 'qm list failed; refusing to guess guest state.' "$TMP/out"
 echo 'PASS installer safety checks: Tor gate, no miner resurrection, huge-page restore format, fail-closed VM detection'
+
+# Runtime huge-page allocation must avoid 1 GiB compaction and bound 2 MiB writes.
+grep -Fq 'Runtime allocation of 1 GiB pages can trigger lengthy synchronous memory' "$ROOT/commands/hugepages.sh"
+grep -Fq 'timeout --signal=TERM --kill-after=2s 8s' "$ROOT/commands/hugepages.sh"
+grep -Fq 'ONE_GB=0' "$ROOT/commands/hugepages.sh"
+grep -Fq 'if (( TARGET_MB >= 2600 && ACTUAL1 >= 1 )); then ONE_GB=1; fi' "$ROOT/commands/hugepages.sh"
+! grep -Fq ' > "$HP1"' "$ROOT/commands/hugepages.sh"

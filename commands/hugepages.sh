@@ -86,29 +86,41 @@ if [[ -r $STATE ]]; then
   [[ $old2 =~ ^[0-9]+$ ]] && BASELINE2=$old2
 fi
 
-# Preserve page reservations that pre-date MeowKit. Resize only the managed
-# allocation, and do it while XMRig is stopped by the resource controller.
-TARGET1=0
-if (( TARGET_MB >= 2600 )) && [[ -w $HP1 ]]; then TARGET1=1; fi
-DESIRED1=$BASELINE1
-(( TARGET1 > DESIRED1 )) && DESIRED1=$TARGET1
-if [[ -w $HP1 ]] && (( ACTUAL1 != DESIRED1 )); then
-  printf '%s\n' "$DESIRED1" > "$HP1" 2>/dev/null || log "Could not resize 1 GiB pool to $DESIRED1; pages may still be in use."
-  ACTUAL1=$(cat "$HP1" 2>/dev/null || echo "$ACTUAL1")
-  [[ $ACTUAL1 =~ ^[0-9]+$ ]] || ACTUAL1=0
-fi
-
+# Runtime allocation of 1 GiB pages can trigger lengthy synchronous memory
+# compaction on a live Proxmox host. RandomX works well with 2 MiB pages, so
+# leave 1 GiB reservations untouched; retain XMRig's 1 GiB mode when a page already exists.
+# Preserve any pre-existing reservations; only grow the 2 MiB pool in small,
+# time-bounded batches. Never shrink pages that may belong to another workload.
 ONE_GB=0
 if (( TARGET_MB >= 2600 && ACTUAL1 >= 1 )); then ONE_GB=1; fi
+DESIRED1=$BASELINE1
 REMAIN_MB=$((TARGET_MB - ACTUAL1 * 1024))
 (( REMAIN_MB > 0 )) || REMAIN_MB=0
 TARGET2=$(((REMAIN_MB + 1) / 2))
 DESIRED2=$BASELINE2
 (( TARGET2 > DESIRED2 )) && DESIRED2=$TARGET2
-if [[ -w $HP2 ]] && (( ACTUAL2 != DESIRED2 )); then
-  printf '%s\n' "$DESIRED2" > "$HP2" 2>/dev/null || log "Could not resize 2 MiB pool to $DESIRED2; pages may still be in use."
-  ACTUAL2=$(cat "$HP2" 2>/dev/null || echo "$ACTUAL2")
-  [[ $ACTUAL2 =~ ^[0-9]+$ ]] || ACTUAL2=0
+
+if [[ -w $HP2 ]] && (( ACTUAL2 < DESIRED2 )); then
+  if command -v timeout >/dev/null 2>&1; then
+    while (( ACTUAL2 < DESIRED2 )); do
+      NEXT2=$((ACTUAL2 + 64))
+      (( NEXT2 > DESIRED2 )) && NEXT2=$DESIRED2
+      if ! timeout --signal=TERM --kill-after=2s 8s bash -c 'printf "%s\n" "$2" > "$1"' _ "$HP2" "$NEXT2"; then
+        log "Timed out or failed while growing the 2 MiB pool at $ACTUAL2 pages; keeping the partial allocation and continuing."
+        break
+      fi
+      NEW_ACTUAL2=$(cat "$HP2" 2>/dev/null || echo "$ACTUAL2")
+      [[ $NEW_ACTUAL2 =~ ^[0-9]+$ ]] || break
+      if (( NEW_ACTUAL2 <= ACTUAL2 )); then
+        log "Kernel could allocate only $NEW_ACTUAL2 of $DESIRED2 requested 2 MiB pages; continuing with the available pages."
+        ACTUAL2=$NEW_ACTUAL2
+        break
+      fi
+      ACTUAL2=$NEW_ACTUAL2
+    done
+  else
+    log 'timeout utility unavailable; skipping runtime huge-page allocation to avoid blocking the installer.'
+  fi
 fi
 
 mkdir -p "$D"
@@ -143,4 +155,4 @@ PY
 fi
 
 log "Guests reserve ${GUEST_MB} MiB; host reserve ${RESERVE_MB} MiB; safe RAM ${SAFE_MB} MiB; huge-page budget ${BUDGET_MB} MiB."
-log "Managed target ${TARGET_MB} MiB; 1 GiB pages ${ACTUAL1}; 2 MiB pages ${ACTUAL2}; 1 GiB mode ${ONE_GB}."
+log "Managed target ${TARGET_MB} MiB; 1 GiB pages left unchanged (${ACTUAL1}); 2 MiB pages ${ACTUAL2}; 1 GiB mode ${ONE_GB}."

@@ -65,7 +65,7 @@ HOST_RESERVE_MB=2048
 EOFHP
   chmod 600 "$MEOWKIT_DIR/hugepages.conf" || warn 'Could not restrict huge-page config permissions.'
   install -m 0755 "$ROOT/commands/hugepages.sh" /usr/local/sbin/meowkit-hugepages || { warn 'Could not install huge-page helper; continuing without it.'; return 0; }
-  /usr/local/sbin/meowkit-hugepages || warn 'Huge-page helper failed; continuing with kernel defaults.'
+  # Huge-page setup runs once config.json exists, avoiding duplicate allocation work.
 }
 
 configure_resource_manager() {

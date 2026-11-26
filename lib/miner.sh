@@ -29,7 +29,9 @@ install_xmrig() {
   local digest='fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5'
   local url="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
   [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'The pinned XMRig checksum must be updated before changing XMRIG_VERSION.'
+  info 'Downloading XMRig through Tor; this can take a few minutes on a slow exit node.'
   curl_tor --output "$asset" "$url" || fail 'Could not download the official XMRig release asset through Tor. The Tor exit node may be blocked; no direct-connection fallback was attempted.'
+  info 'XMRig download complete; verifying SHA-256.'
   printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
   tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
   local extracted="$WORKDIR/xmrig-${XMRIG_VERSION}/xmrig"
@@ -41,8 +43,8 @@ write_tor_check() {
   cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
 #!/bin/sh
 set -eu
-response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
-printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)'
+response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
+printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' || { echo '[MeowKit] Tor pre-start check failed: proxy response did not confirm a Tor exit node.' >&2; exit 1; }
 EOFCHK
   chmod 755 /usr/local/sbin/meowkit-tor-check
 }
@@ -53,7 +55,7 @@ write_configuration() {
   case $LOG_MODE in
     normal) LOG_STDOUT=journal; LOG_STDERR=journal ;;
     errors) LOG_STDOUT=null; LOG_STDERR=journal ;;
-    none) LOG_STDOUT=null; LOG_STDERR=null ;;
+    none) LOG_STDOUT=null; LOG_STDERR=journal ;;
     *) fail 'Log mode must be normal, errors or none.' ;;
   esac
   [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory."
@@ -131,7 +133,7 @@ Type=simple
 ${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${MEOWKIT_THREADS}
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=\${MEOWKIT_THREADS}
 Restart=always
 RestartSec=30
 Nice=10
@@ -153,6 +155,7 @@ EOFUNIT
   systemd-analyze verify "$MEOWKIT_SERVICE" || fail 'systemd rejected the generated service unit.'
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
+  info 'Starting the MeowKit systemd service.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
   if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
     /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
