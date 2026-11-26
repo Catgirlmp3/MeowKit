@@ -42,9 +42,27 @@ install_xmrig() {
 write_tor_check() {
   cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
 #!/bin/sh
-set -eu
-response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
-printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' || { echo '[MeowKit] Tor pre-start check failed: proxy response did not confirm a Tor exit node.' >&2; exit 1; }
+set -u
+attempt=1
+max_attempts=8
+last_error='Tor circuit did not become ready.'
+while [ "$attempt" -le "$max_attempts" ]; do
+  if response=$(/usr/bin/curl --connect-timeout 8 --max-time 20 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>&1); then
+    if printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
+      exit 0
+    fi
+    last_error='SOCKS proxy responded, but the response did not confirm a Tor exit node.'
+  else
+    last_error=$response
+  fi
+  if [ "$attempt" -lt "$max_attempts" ]; then
+    echo "[MeowKit] Tor is not ready (attempt $attempt/$max_attempts); retrying in 5 seconds." >&2
+    sleep 5
+  fi
+  attempt=$((attempt + 1))
+done
+echo "[MeowKit] Tor pre-start check failed after $max_attempts attempts: $last_error" >&2
+exit 1
 EOFCHK
   chmod 755 /usr/local/sbin/meowkit-tor-check
 }
@@ -130,6 +148,8 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+# Allow the Tor preflight's bounded retry window plus huge-page preparation.
+TimeoutStartSec=210
 ${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
