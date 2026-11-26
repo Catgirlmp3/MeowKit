@@ -58,7 +58,11 @@ chmod +x "$TMP/bin/systemctl"
 sed -i 's/^SCHEDULE_ENABLED=1$/SCHEDULE_ENABLED=0/' "$D/resource-profile.conf"
 rm -f "$D/runtime.env" "$D/resource-state"
 : > "$TMP/systemctl.log"
-out=$(MEOWKIT_DIR="$D" MEOWKIT_SYSTEMD_DIR="$TMP/systemd" MEOWKIT_SYSTEMCTL_LOG="$TMP/systemctl.log" PATH="$TMP/bin:$PATH" bash "$ROOT/commands/resource-watch.sh" --prepare)
+if [[ $EUID -eq 0 ]]; then
+  out=$(MEOWKIT_DIR="$D" MEOWKIT_SYSTEMD_DIR="$TMP/systemd" MEOWKIT_SYSTEMCTL_LOG="$TMP/systemctl.log" PATH="$TMP/bin:$PATH" bash "$ROOT/commands/resource-watch.sh" --prepare)
+else
+  out=$(sudo env "MEOWKIT_DIR=$D" "MEOWKIT_SYSTEMD_DIR=$TMP/systemd" "MEOWKIT_SYSTEMCTL_LOG=$TMP/systemctl.log" "PATH=$TMP/bin:$PATH" bash "$ROOT/commands/resource-watch.sh" --prepare)
+fi
 grep -Fq 'Prepared initial profile: 8 threads' <<<"$out"
 grep -Fqx 'MEOWKIT_THREADS=8' "$D/runtime.env"
 grep -Fqx 'THREADS=8' "$D/resource-state"
