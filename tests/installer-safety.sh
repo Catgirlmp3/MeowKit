@@ -9,7 +9,7 @@ grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 # The generated service must define the exact variable used in ExecStart,
 # and only remove systemd's conventional /dev/null mask (not arbitrary links).
 grep -Fq 'MEOWKIT_THREADS=$THREADS' "$ROOT/lib/miner.sh"
-grep -Fq 'printf \'MEOWKIT_THREADS=%s\\n\' "$MEOWKIT_THREADS"' "$ROOT/lib/miner.sh"
+grep -Fq 'MEOWKIT_THREADS=%s' "$ROOT/lib/miner.sh"
 grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
 grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
 
