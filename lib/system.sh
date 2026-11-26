@@ -19,7 +19,7 @@ detect_resources() {
   [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT >= 10 && CPU_PERCENT <= 100)) || fail 'CPU allocation percentage must be between 10 and 100.'
   [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 10 && RAM_PERCENT <= 90)) || fail 'Huge-page RAM percentage must be between 10 and 90.'
   [[ $VM_CPU_REDUCTION_PERCENT =~ ^[0-9]+$ ]] && ((VM_CPU_REDUCTION_PERCENT >= 0 && VM_CPU_REDUCTION_PERCENT <= 90)) || fail 'VM CPU reduction must be between 0 and 90%.'
-  [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT >= 1 && DAY_PERCENT <= 100)) || fail 'Scheduled CPU allocation must be between 1 and 100%.
+  [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT >= 1 && DAY_PERCENT <= 100)) || fail 'Scheduled CPU allocation must be between 1 and 100%.'
 
   THREADS=$((TOTAL_THREADS * CPU_PERCENT / 100))
   ((THREADS > 0)) || THREADS=1
