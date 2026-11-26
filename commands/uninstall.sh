@@ -6,9 +6,12 @@ run() {
   local label=$1; shift
   if "$@"; then printf '[+] %s\n' "$label"; else printf '[!] %s failed; continuing.\n' "$label" >&2; failed=1; fi
 }
+run 'Stop and disable adaptive resource timer' systemctl disable --now meowkit-resource-watch.timer
+run 'Stop adaptive resource service' systemctl stop meowkit-resource-watch.service
 run 'Stop and disable MeowKit service' systemctl disable --now meowkit.service
-run 'Remove MeowKit service and executable' rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig
+run 'Remove MeowKit service and executable' rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-resource-watch.service /etc/systemd/system/meowkit-resource-watch.timer /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-resource-watch /etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
 run 'Remove MeowKit helper scripts' rm -f /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages
+rmdir /etc/systemd/system/meowkit.service.d 2>/dev/null || true
 run 'Remove MeowKit MSR configuration' rm -f /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
 
 # Remove only the known legacy quiet override, and only if its contents match
