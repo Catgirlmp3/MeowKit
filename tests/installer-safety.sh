@@ -50,3 +50,9 @@ if MEOWKIT_DIR="$TMP/meowkit" PATH="$TMP/bin:$PATH" bash "$ROOT/commands/resourc
 fi
 grep -Fq 'qm list failed; refusing to guess guest state.' "$TMP/out"
 echo 'PASS installer safety checks: Tor gate, no miner resurrection, huge-page restore format, fail-closed VM detection'
+
+# Runtime huge-page allocation must avoid 1 GiB compaction and bound 2 MiB writes.
+grep -Fq 'Runtime allocation of 1 GiB pages can trigger lengthy synchronous memory' "$ROOT/commands/hugepages.sh"
+grep -Fq 'timeout --signal=TERM --kill-after=2s 8s' "$ROOT/commands/hugepages.sh"
+grep -Fq 'ONE_GB=0' "$ROOT/commands/hugepages.sh"
+! grep -Fq ' > "$HP1"' "$ROOT/commands/hugepages.sh"
