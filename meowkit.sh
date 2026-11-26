@@ -114,19 +114,24 @@ if [[ $ACTION == install && -t 0 && $MODE == quiet ]]; then
   [[ ${selected_mode,,} == v ]] && MODE=verbose
 fi
 
-# Ask once, before the lengthy install/bootstrap work. The same prompt is used
-# by the installer's menu (recommended and custom installs).
-if [[ $ACTION == install && -z ${WORKER_NAME:-} && -t 0 ]]; then
-  suggested_name=$(hostname -s 2>/dev/null || printf 'meow-worker')
-  read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
-  WORKER_NAME=${WORKER_NAME:-$suggested_name}
-fi
-
-if [[ $ACTION == repair ]]; then
-  # Repairs retain the identity already assigned to this machine.
+# Resolve the worker identity before doing any package, Tor or miner work.
+# The install menu (recommended/custom) and direct CLI installs use the same
+# prompt. A saved identity is reused for repairs; no automatic meow<N> counter.
+if [[ $ACTION == install || $ACTION == repair ]]; then
   if [[ -z ${WORKER_NAME:-} && -r /etc/meowkit/worker-name ]]; then
     IFS= read -r WORKER_NAME < /etc/meowkit/worker-name || true
   fi
+  if [[ -z ${WORKER_NAME:-} && -t 0 ]]; then
+    suggested_name=$(hostname -s 2>/dev/null || printf 'meow-worker')
+    read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
+    WORKER_NAME=${WORKER_NAME:-$suggested_name}
+  fi
+  [[ -n ${WORKER_NAME:-} ]] || fail 'Worker name is required. Run interactively or pass --worker-name NAME.'
+  [[ $WORKER_NAME =~ ^[A-Za-z0-9._-]{1,32}$ ]] ||
+    fail 'Worker name must be 1-32 characters: letters, numbers, dot, underscore or hyphen.'
+fi
+
+if [[ $ACTION == repair ]]; then
   REPAIR=1
   if [[ -r /etc/meowkit/resources.conf ]]; then
     # Preserve the installer's original baseline percentage, not the daytime hint.
