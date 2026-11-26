@@ -88,10 +88,11 @@ fi
 
 # Runtime allocation of 1 GiB pages can trigger lengthy synchronous memory
 # compaction on a live Proxmox host. RandomX works well with 2 MiB pages, so
-# leave 1 GiB reservations untouched and disable XMRig's 1 GiB-page mode.
+# leave 1 GiB reservations untouched; retain XMRig's 1 GiB mode when a page already exists.
 # Preserve any pre-existing reservations; only grow the 2 MiB pool in small,
 # time-bounded batches. Never shrink pages that may belong to another workload.
 ONE_GB=0
+if (( TARGET_MB >= 2600 && ACTUAL1 >= 1 )); then ONE_GB=1; fi
 DESIRED1=$BASELINE1
 REMAIN_MB=$((TARGET_MB - ACTUAL1 * 1024))
 (( REMAIN_MB > 0 )) || REMAIN_MB=0
@@ -154,4 +155,4 @@ PY
 fi
 
 log "Guests reserve ${GUEST_MB} MiB; host reserve ${RESERVE_MB} MiB; safe RAM ${SAFE_MB} MiB; huge-page budget ${BUDGET_MB} MiB."
-log "Managed target ${TARGET_MB} MiB; 1 GiB pages left unchanged (${ACTUAL1}); 2 MiB pages ${ACTUAL2}; 1 GiB mode disabled."
+log "Managed target ${TARGET_MB} MiB; 1 GiB pages left unchanged (${ACTUAL1}); 2 MiB pages ${ACTUAL2}; 1 GiB mode ${ONE_GB}."
