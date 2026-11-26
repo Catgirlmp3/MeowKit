@@ -218,13 +218,13 @@ The watcher can only detect guests on a Proxmox host where `qm` and/or `pct` are
 
 ### CPU
 
-The default profile allocates 75% of available CPUs; the shared-VM profile allocates 50%; the maximum profile allocates 100%. 50% is the hard minimum. CPU detection respects the CPUs available inside the guest. With `--threads N`, MeowKit uses that count (subject to the 50% minimum) and sets `CPUQuota=N×100%`.
+The default profile allocates 75% of available CPUs; the shared-host profile allocates 50%; the maximum profile allocates 100%. Custom mode accepts any whole-number CPU percentage from 1 to 100. CPU detection respects the CPUs available inside the guest. With `--threads N`, MeowKit uses that count and sets `CPUQuota=N×100%`.
 
-Proxmox guests can be detected from the host. A VirtualBox guest on Windows cannot inspect other VMs on the Windows host, so use `--vm-mode shared` when another VM is active.
+On a Proxmox host, the adaptive watcher detects running guests and applies the configured VM reduction. A VirtualBox guest on Windows cannot inspect other VMs on the Windows host, so use `--vm-mode shared` to choose a lower baseline when another VM is active.
 
 ### 2 MiB huge pages
 
-MeowKit calculates its 2 MiB huge-page target from `MemAvailable`, a safety reserve (at least 1 GiB and normally 20% of RAM), the RandomX dataset requirement and configured thread count. The RAM percentage limits the safe budget. It also attempts one 1 GiB page when the kernel exposes that interface and enough memory is available. 1 GiB pages are optional; MeowKit does not alter GRUB or require a reboot.
+MeowKit calculates its huge-page target from physical RAM, a host reserve (at least 2 GiB and normally 20% of RAM), the configured memory of running Proxmox guests, the RandomX dataset requirement and selected thread count. The RAM percentage limits the safe budget. It attempts one 1 GiB page when the kernel exposes that interface and enough memory is available, then uses 2 MiB pages for the remainder. It tracks the pre-existing page counts and adjusts only the allocation managed by MeowKit. 1 GiB pages are optional; MeowKit does not alter GRUB or require a reboot.
 
 For a small VM, leave enough memory for Ubuntu and other services. If the guest becomes sluggish or reports memory pressure, use the custom installation option to lower the huge-page budget or increase the VM's assigned RAM.
 
