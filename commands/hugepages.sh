@@ -11,7 +11,7 @@ if [[ -r $STATE ]]; then
   # shellcheck source=/dev/null
   source "$STATE"
 fi
-[[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT>=10 && RAM_PERCENT<=90)) || RAM_PERCENT=75
+[[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT>=1 && RAM_PERCENT<=100)) || RAM_PERCENT=75
 [[ $HOST_RESERVE_MB =~ ^[0-9]+$ ]] || HOST_RESERVE_MB=2048
 TOTAL_MB=$(awk '/MemTotal:/ {print int($2/1024)}' /proc/meminfo)
 [[ $TOTAL_MB =~ ^[0-9]+$ ]] || { log "Cannot read total memory; leaving current reservations unchanged."; exit 0; }
