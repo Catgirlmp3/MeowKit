@@ -102,7 +102,7 @@ if [[ -w $HP2 ]] && (( ACTUAL2 < DESIRED2 )); then
     while (( ACTUAL2 < DESIRED2 )); do
       NEXT2=$((ACTUAL2 + 64))
       (( NEXT2 > DESIRED2 )) && NEXT2=$DESIRED2
-      if ! timeout --signal=TERM --kill-after=2s 8s bash -c 'printf "%s\\n" "$2" > "$1"' _ "$HP2" "$NEXT2"; then
+      if ! timeout --signal=TERM --kill-after=2s 8s bash -c 'printf "%s\n" "$2" > "$1"' _ "$HP2" "$NEXT2"; then
         log "Timed out or failed while growing the 2 MiB pool at $ACTUAL2 pages; keeping the partial allocation and continuing."
         break
       fi
