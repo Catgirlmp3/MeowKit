@@ -14,9 +14,12 @@ detect_resources() {
 
   CPU_PERCENT=${CPU_PERCENT:-75}
   RAM_PERCENT=${RAM_PERCENT:-75}
-  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT >= 10 && CPU_PERCENT <= 90)) || fail 'CPU allocation percentage must be between 10 and 90.'
+  VM_CPU_REDUCTION_PERCENT=${VM_CPU_REDUCTION_PERCENT:-50}
+  DAY_PERCENT=${DAY_PERCENT:-40}
+  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT >= 10 && CPU_PERCENT <= 100)) || fail 'CPU allocation percentage must be between 10 and 100.'
   [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 10 && RAM_PERCENT <= 90)) || fail 'Huge-page RAM percentage must be between 10 and 90.'
-  if ((guests > 0)) && ((${CPU_PERCENT_EXPLICIT:-0} == 0)); then CPU_PERCENT=50; fi
+  [[ $VM_CPU_REDUCTION_PERCENT =~ ^[0-9]+$ ]] && ((VM_CPU_REDUCTION_PERCENT >= 0 && VM_CPU_REDUCTION_PERCENT <= 90)) || fail 'VM CPU reduction must be between 0 and 90%.'
+  [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT >= 1 && DAY_PERCENT <= 100)) || fail 'Scheduled CPU allocation must be between 1 and 100%.
 
   THREADS=$((TOTAL_THREADS * CPU_PERCENT / 100))
   ((THREADS > 0)) || THREADS=1
@@ -92,9 +95,9 @@ configure_schedule() {
   local detected_total=$TOTAL_THREADS
   local schedule_file="$MEOWKIT_DIR/schedule.conf"
 
-  SCHEDULE_ENABLED=1
-  DAY_START=08:00
-  DAY_END=16:00
+  SCHEDULE_ENABLED=${SCHEDULE_ENABLED:-1}
+  DAY_START=${DAY_START:-08:00}
+  DAY_END=${DAY_END:-16:00}
   DAY_THREADS=$((detected_threads * DAY_PERCENT / 100))
   ((DAY_THREADS > 0)) || DAY_THREADS=1
   TIMEZONE=Europe/Dublin
