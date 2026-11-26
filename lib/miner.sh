@@ -116,7 +116,9 @@ write_configuration() {
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
   cat > "$tmp" <<EOFJSON
 {
-  "donate-level": 0,\n  "donate-over-proxy": 0,\n  "autosave": false,
+  "donate-level": 0,
+  "donate-over-proxy": 0,
+  "autosave": false,
   "background": false,
   "colors": false,
   "title": false,
