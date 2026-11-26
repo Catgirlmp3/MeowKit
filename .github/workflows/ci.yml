@@ -5,9 +5,11 @@ on:
     branches: [main, meowkit-v2-restructure, feat/modular-installer]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   syntax:
@@ -29,6 +31,82 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/installer-safety.sh
+          bash tests/xmrig-installer.sh
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md
+      - name: Verify bundled XMRig binary
+        if: hashFiles('vendor/xmrig/linux-x86_64/meowkit-xmrig') != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libuv1 libhwloc15
+          (cd vendor/xmrig/linux-x86_64 && sha256sum --check SHA256SUMS)
+          vendor/xmrig/linux-x86_64/meowkit-xmrig --version | grep -F '6.26.0'
+
+
+  xmrig-source-build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - name: Install XMRig build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libuv1-dev libhwloc-dev
+      - name: Fetch pinned upstream source and verify revision
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch v6.26.0 https://github.com/xmrig/xmrig.git xmrig-src
+          test "$(git -C xmrig-src rev-parse HEAD)" = "b2ca72480c58d197e18c885d9fc1a0c8d517e60a"
+      - name: Apply and verify zero-donation source patch
+        run: |
+          set -euo pipefail
+          (cd xmrig-src && git apply ../vendor/xmrig/zero-donation.patch)
+          grep -Fq 'kDefaultDonateLevel = 0;' xmrig-src/src/donate.h
+          grep -Fq 'kMinimumDonateLevel = 0;' xmrig-src/src/donate.h
+      - name: Compile XMRig
+        run: |
+          set -euo pipefail
+          cmake -S xmrig-src -B xmrig-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_HWLOC=ON \
+            -DWITH_TLS=OFF \
+            -DWITH_OPENCL=OFF \
+            -DWITH_CUDA=OFF \
+            -DWITH_MSR=ON \
+            -DWITH_ASM=ON
+          cmake --build xmrig-build --parallel 2
+          test -x xmrig-build/xmrig-notls
+          ./xmrig-build/xmrig-notls --version
+      - name: Package the precompiled MeowKit binary
+        run: |
+          set -euo pipefail
+          install -d -m 755 vendor/xmrig/linux-x86_64
+          install -m 755 xmrig-build/xmrig-notls vendor/xmrig/linux-x86_64/meowkit-xmrig
+          strip vendor/xmrig/linux-x86_64/meowkit-xmrig
+          vendor/xmrig/linux-x86_64/meowkit-xmrig --version | grep -F '6.26.0'
+          (cd vendor/xmrig/linux-x86_64 && sha256sum meowkit-xmrig > SHA256SUMS)
+          ! ldd vendor/xmrig/linux-x86_64/meowkit-xmrig | grep -F 'not found'
+      - name: Commit the generated binary to the same-repository PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vendor/xmrig/linux-x86_64/meowkit-xmrig vendor/xmrig/linux-x86_64/SHA256SUMS
+          if git diff --cached --quiet; then
+            echo 'Bundled XMRig binary is already up to date.'
+            exit 0
+          fi
+          git commit -m 'build: bundle pinned zero-donation XMRig binary'
+          git push origin "HEAD:$PR_BRANCH"
+          # GITHUB_TOKEN pushes do not trigger a new push workflow. Explicitly
+          # dispatch CI against the new PR head so its checks cover the bundle.
+          gh workflow run ci.yml --ref "$PR_BRANCH"

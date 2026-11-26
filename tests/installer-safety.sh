@@ -26,10 +26,28 @@ grep -Fq -- '--silent --show-error --fail --socks5-hostname' "$ROOT/lib/miner.sh
 grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
 grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
 
-# XMRig install must not depend on the unauthenticated GitHub Releases API.
-grep -Fq 'https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz' "$ROOT/lib/miner.sh"
-grep -Fq "fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5" "$ROOT/lib/miner.sh"
-! grep -Fq 'api.github.com/repos/xmrig/xmrig/releases' "$ROOT/lib/miner.sh"
+# The CI-built, pinned XMRig binary ships with MeowKit and is validated before use.
+grep -Fq "XMRIG_VERSION='6.26.0'" "$ROOT/lib/miner.sh"
+grep -Fq "XMRIG_BUNDLE_DIR='vendor/xmrig/linux-x86_64'" "$ROOT/lib/miner.sh"
+grep -Fq 'local bundle="$ROOT/$XMRIG_BUNDLE_DIR/$XMRIG_BUNDLE_NAME"' "$ROOT/lib/miner.sh"
+grep -Fq 'verify_xmrig_candidate "$bundle" "$bundle_sums"' "$ROOT/lib/miner.sh"
+grep -Fq 'Trying the MeowKit XMRig bundle through Tor.' "$ROOT/lib/miner.sh"
+grep -Fq 'Trying the normal HTTPS download of the MeowKit XMRig bundle.' "$ROOT/lib/miner.sh"
+grep -Fq 'No stock 1%-donation binary was installed.' "$ROOT/lib/miner.sh"
+grep -Fq '"donate-level": 0' "$ROOT/lib/miner.sh"
+grep -Fq '"donate-over-proxy": 0' "$ROOT/lib/miner.sh"
+! grep -Fq 'git clone --quiet --depth 1 --branch "v$XMRIG_VERSION"' "$ROOT/lib/miner.sh"
+! grep -Fq 'build-essential cmake libuv1-dev libhwloc-dev' "$ROOT/lib/tor.sh"
+grep -Fq 'libuv1 libhwloc15' "$ROOT/lib/tor.sh"
+test -s "$ROOT/vendor/xmrig/zero-donation.patch"
+test -s "$ROOT/vendor/xmrig/LICENSE"
+grep -Fq 'git apply ../vendor/xmrig/zero-donation.patch' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'xmrig-build/xmrig-notls' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'vendor/xmrig/linux-x86_64/meowkit-xmrig' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'kDefaultDonateLevel = 0;' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'kMinimumDonateLevel = 0;' "$ROOT/.github/workflows/ci.yml"
+! grep -Fq 'for _ in {1..18}' "$ROOT/lib/tor.sh"
+grep -Fq 'installation will not wait for Tor' "$ROOT/lib/tor.sh"
 
 # The timer must not pull the miner in, and the watcher must not resurrect it.
 ! grep -Fq 'Wants=meowkit.service' "$ROOT/lib/system.sh"

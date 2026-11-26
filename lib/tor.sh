@@ -18,9 +18,9 @@ bootstrap_tor() {
     fi
   fi
 
-  # Install the remaining runtime/download tools only after Tor is present.
+  # Install the remaining runtime/download tools only after Tor is present.\n  # The XMRig binary is precompiled and bundled; target machines need no compiler.
   # Prefer cached indexes; refresh and retry only if the package install needs it.
-  local packages=(curl python3 tar gzip ca-certificates)
+  local packages=(curl python3 tar gzip ca-certificates libuv1 libhwloc15)
   local missing=()
   for package in "${packages[@]}"; do
     status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null || true)
@@ -70,21 +70,11 @@ bootstrap_tor() {
   # keep the unit in 'activating' even after the SOCKS listener is usable.
   systemctl restart --no-block "$TOR_UNIT" || info "Could not queue restart for $TOR_UNIT; checking its existing listener."
 
-  local ok=0 response
-  for _ in {1..18}; do
-    if response=$(curl --connect-timeout 5 --max-time 12 --silent --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null) &&
-       printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
-      ok=1
-      break
-    fi
-    sleep 5
-  done
+  # Do not block installation waiting for a Tor circuit. XMRig source is
+  # fetched directly from GitHub; the service performs a strict Tor identity
+  # check immediately before the miner can start.
+  info "Tor is enabled through $TOR_UNIT. Circuit readiness will be verified at miner startup; installation will not wait for Tor."
 
-  if ((ok == 1)); then
-    info "Tor SOCKS5 connection verified through $TOR_UNIT."
-  else
-    info "Tor is installed and enabled, but its SOCKS5 connection is not ready yet. MeowKit will retry through the proxy; no direct-connection fallback is used."
-  fi
 }
 
 curl_tor() {

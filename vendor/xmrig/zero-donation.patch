@@ -1,0 +1,10 @@
+diff --git a/src/donate.h b/src/donate.h
+--- a/src/donate.h
++++ b/src/donate.h
+@@ -39,4 +39,4 @@
+  */
+-constexpr const int kDefaultDonateLevel = 1;
+-constexpr const int kMinimumDonateLevel = 1;
++constexpr const int kDefaultDonateLevel = 0;
++constexpr const int kMinimumDonateLevel = 0;
+ 

