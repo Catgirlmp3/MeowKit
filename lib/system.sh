@@ -26,6 +26,7 @@ detect_resources() {
   cat > "$MEOWKIT_DIR/resources.conf" <<EOFRES
 CPU_PERCENT=$CPU_PERCENT
 RAM_PERCENT=$RAM_PERCENT
+VM_CPU_REDUCTION_PERCENT=$VM_CPU_REDUCTION_PERCENT
 EOFRES
   chmod 600 "$MEOWKIT_DIR/resources.conf"
   log "CPU threads: $TOTAL_THREADS; baseline miner threads: $THREADS; CPU quota: ${CPU_QUOTA}%; RAM: ${TOTAL_RAM_MB} MiB; running Proxmox guests: $guests"
@@ -94,7 +95,8 @@ configure_schedule() {
   SCHEDULE_ENABLED=1
   DAY_START=08:00
   DAY_END=16:00
-  DAY_THREADS=8
+  DAY_THREADS=$((detected_threads * DAY_PERCENT / 100))
+  ((DAY_THREADS > 0)) || DAY_THREADS=1
   TIMEZONE=Europe/Dublin
   if [[ -r "$schedule_file" ]]; then
     # Preserve user-edited schedule settings during repair.
@@ -106,11 +108,16 @@ configure_schedule() {
   THREADS=$detected_threads
   TOTAL_THREADS=$detected_total
 
+  DAY_PERCENT=${DAY_PERCENT:-40}
+  [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT >= 1 && DAY_PERCENT <= 100)) || DAY_PERCENT=40
+  DAY_THREADS=$((detected_threads * DAY_PERCENT / 100))
+  ((DAY_THREADS > 0)) || DAY_THREADS=1
   cat > "$schedule_file" <<EOFSCHEDULE
 SCHEDULE_ENABLED=${SCHEDULE_ENABLED:-1}
 DAY_START=${DAY_START:-08:00}
 DAY_END=${DAY_END:-16:00}
-DAY_THREADS=${DAY_THREADS:-8}
+DAY_PERCENT=$DAY_PERCENT
+DAY_THREADS=$DAY_THREADS
 BASE_THREADS=$detected_threads
 TOTAL_THREADS=$detected_total
 TIMEZONE=${TIMEZONE:-Europe/Dublin}
