@@ -2,7 +2,7 @@ name: Shell validation
 
 on:
   push:
-    branches: [main, meowkit-v2-restructure]
+    branches: [main, meowkit-v2-restructure, feat/modular-installer]
   pull_request:
     branches: [main]
 
@@ -18,9 +18,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n meowkit.sh lib/*.sh commands/*.sh
-          awk '/^  cat > \/usr\/local\/sbin\/meowkit-hugepages <<'\''EOFHP'\''$/ { inside=1; next } inside && /^EOFHP$/ { exit } inside { print }' lib/system.sh > /tmp/meowkit-hugepages
-          bash -n /tmp/meowkit-hugepages
+          bash -n meowkit.sh lib/*.sh commands/*.sh tests/*.sh
+      - name: Check adaptive resource watcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/resource-watch.sh
+      - name: Check installer safety regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/installer-safety.sh
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md

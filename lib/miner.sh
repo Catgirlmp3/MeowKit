@@ -4,10 +4,13 @@ POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
 
 worker_name() {
-  local idfile="$MEOWKIT_DIR/worker-id" id=1
-  install -d -m 750 "$MEOWKIT_DIR"
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then id=$(<"$idfile"); else printf '%s\n' "$id" > "$idfile"; chmod 600 "$idfile"; fi
-  RIG_NAME="meow$id"
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create settings directory.'
+  if [[ -z ${WORKER_NAME:-} && -f $MEOWKIT_DIR/worker-name ]]; then WORKER_NAME=$(<"$MEOWKIT_DIR/worker-name"); fi
+  WORKER_NAME=${WORKER_NAME:-$(hostname -s 2>/dev/null || echo meow-worker)}
+  [[ $WORKER_NAME =~ ^[A-Za-z0-9._-]{1,32}$ ]] || fail 'Worker name must be 1-32 chars: letters, numbers, dot, underscore or hyphen.'
+  RIG_NAME=$WORKER_NAME
+  printf '%s\n' "$RIG_NAME" > "$MEOWKIT_DIR/worker-name" || fail 'Could not save worker name.'
+  chmod 600 "$MEOWKIT_DIR/worker-name" || warn 'Could not restrict worker-name permissions.'
 }
 
 install_xmrig() {
@@ -50,8 +53,17 @@ EOFCHK
 
 write_configuration() {
   begin_step 'Validated miner configuration'
-  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory. Move or remove that conflicting path, then rerun."
-  install -d -m 750 "$MEOWKIT_DIR"
+  LOG_MODE=${LOG_MODE:-normal}
+  case $LOG_MODE in
+    normal) LOG_STDOUT=journal; LOG_STDERR=journal ;;
+    errors) LOG_STDOUT=null; LOG_STDERR=journal ;;
+    none) LOG_STDOUT=null; LOG_STDERR=null ;;
+    *) fail 'Log mode must be normal, errors or none.' ;;
+  esac
+  [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory."
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create application settings directory.'
+  printf 'LOG_MODE=%s\n' "$LOG_MODE" > "$MEOWKIT_DIR/settings.conf" || warn 'Could not persist logging preference.'
+  chmod 600 "$MEOWKIT_DIR/settings.conf" 2>/dev/null || warn 'Could not restrict settings permissions.'
   [[ ! -e $MEOWKIT_DIR/config.json || -f $MEOWKIT_DIR/config.json ]] || fail "$MEOWKIT_DIR/config.json exists but is not a regular file. Move or remove the conflicting directory, then rerun."
   worker_name
   local tmp="$MEOWKIT_DIR/config.json.tmp.$$"
@@ -74,6 +86,10 @@ EOFJSON
   chmod 640 "$tmp"
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
+  # Re-run after config.json exists so the helper can set XMRig's 1 GiB page flag.
+  [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
+  printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$MEOWKIT_DIR/runtime.env"
+  chmod 640 "$MEOWKIT_DIR/runtime.env"
   write_tor_check
   # Only expose huge-page sysfs paths that actually exist on this kernel.
   # Keep each path a separate systemd ReadWritePaths argument; concatenating
@@ -87,19 +103,22 @@ EOFJSON
     HP_WRITE_PATHS=${HP_WRITE_PATHS% }
   fi
 
-  [[ -x /usr/local/sbin/meowkit-hugepages ]] || fail 'Huge-page helper was not created at /usr/local/sbin/meowkit-hugepages.'
+  local hp_pre=''
+  if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
 Description=MeowKit Background Workload
 Wants=network-online.target ${TOR_UNIT}
-After=network-online.target
+After=network-online.target ${TOR_UNIT}
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStartPre=/usr/local/sbin/meowkit-hugepages
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS}
+${hp_pre}
+ExecStartPre=/usr/local/sbin/meowkit-tor-check
+EnvironmentFile=${MEOWKIT_DIR}/runtime.env
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${MEOWKIT_THREADS}
 Restart=always
 RestartSec=30
 Nice=10
@@ -110,8 +129,8 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${MEOWKIT_DIR} ${HP_WRITE_PATHS}
-StandardOutput=journal
-StandardError=journal
+StandardOutput=${LOG_STDOUT}
+StandardError=${LOG_STDERR}
 SyslogIdentifier=meowkit
 
 [Install]
@@ -122,6 +141,10 @@ EOFUNIT
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
+  if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
+    /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
+    systemctl enable --now meowkit-resource-watch.timer >/dev/null 2>&1 || warn 'Could not enable the adaptive resource timer.'
+  fi
 }
 
 run_install() {
@@ -138,6 +161,7 @@ run_install() {
   require_cmd sha256sum
   configure_msr
   configure_hugepages
+  configure_resource_manager
   install_xmrig
   write_configuration
   info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} available CPU threads; CPUQuota=${CPU_QUOTA}%."

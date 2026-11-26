@@ -1,36 +1,70 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -uo pipefail
+[[ $EUID -eq 0 ]] || { echo 'Run as root.' >&2; exit 1; }
+failed=0
+run() {
+  local label=$1; shift
+  if "$@"; then printf '[+] %s\n' "$label"; else printf '[!] %s failed; continuing.\n' "$label" >&2; failed=1; fi
+}
+systemctl disable --now meowkit-resource-watch.timer >/dev/null 2>&1 || true
+systemctl stop meowkit-resource-watch.service >/dev/null 2>&1 || true
+run 'Stop and disable MeowKit service' systemctl disable --now meowkit.service
+if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then
+  /usr/local/sbin/meowkit-hugepages --restore || echo '[!] Could not fully restore pre-MeowKit huge-page reservations.' >&2
+fi
+run 'Remove MeowKit service and executable' rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-resource-watch.service /etc/systemd/system/meowkit-resource-watch.timer /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-resource-watch /etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
+run 'Remove MeowKit helper scripts' rm -f /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages
+rmdir /etc/systemd/system/meowkit.service.d 2>/dev/null || true
+run 'Remove MeowKit MSR configuration' rm -f /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
 
-systemctl disable --now meowkit.service >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/meowkit.service /usr/local/bin/meowkit-xmrig \
-  /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages \
-  /etc/modules-load.d/meowkit-msr.conf /etc/modprobe.d/meowkit-msr.conf
-rm -rf /etc/meowkit
+# Remove only the known legacy quiet override, and only if its contents match
+# the exact two-line override. Never delete a user's entire drop-in directory.
+quiet=/etc/systemd/system/meowkit.service.d/quiet.conf
+if [[ -f $quiet ]] && grep -qxF '[Service]' "$quiet" &&
+   grep -qxF 'StandardOutput=null' "$quiet" &&
+   grep -qxF 'StandardError=null' "$quiet" &&
+   [[ $(wc -l < "$quiet") -eq 3 ]]; then
+  run 'Remove legacy MeowKit quiet override' rm -f "$quiet"
+fi
+if [[ -d /etc/systemd/system/meowkit.service.d ]]; then
+  rmdir /etc/systemd/system/meowkit.service.d 2>/dev/null || true
+fi
 
-# Remove only the exact marker/directive pair that MeowKit manages.
+# Remove MeowKit's application directory only if it is a real directory.
+if [[ -d /etc/meowkit ]]; then run 'Remove MeowKit application settings' rm -rf -- /etc/meowkit
+elif [[ -e /etc/meowkit ]]; then echo '[!] /etc/meowkit is not a directory; left untouched.' >&2; failed=1
+fi
+
+# Remove only MeowKit's exact Tor marker/directive pair. Keep all other Tor
+# directives and user-created systemd overrides intact.
 if [[ -f /etc/tor/torrc ]]; then
-  tmp=$(mktemp /etc/tor/torrc.meowkit.XXXXXX)
-  if awk '
-    $0 == "# MeowKit managed SOCKS5 listener" {
-      if (getline nextline > 0) {
-        if (nextline == "SocksPort 127.0.0.1:9050") { next }
-        print
-        print nextline
-        next
+  tmp=$(mktemp /etc/tor/torrc.meowkit.XXXXXX) || { echo '[!] Could not create torrc temporary file; left unchanged.' >&2; failed=1; tmp=''; }
+  if [[ -n $tmp ]]; then
+    if awk '
+      $0 == "# MeowKit managed SOCKS5 listener" {
+        if (getline nextline > 0) {
+          if (nextline == "SocksPort 127.0.0.1:9050") next
+          print
+          print nextline
+          next
+        }
       }
-    }
-    { print }
-  ' /etc/tor/torrc > "$tmp"; then
-    chmod --reference=/etc/tor/torrc "$tmp"
-    chown --reference=/etc/tor/torrc "$tmp"
-    cat "$tmp" > /etc/tor/torrc
-  else
-    printf 'Warning: could not safely process torrc; it was left unchanged.\n' >&2
-  fi
-  rm -f "$tmp"
-  if command -v tor >/dev/null 2>&1; then
-    tor --verify-config -f /etc/tor/torrc >/dev/null 2>&1 || printf 'Warning: Tor configuration needs review after removing the MeowKit listener.\n' >&2
+      { print }
+    ' /etc/tor/torrc > "$tmp" &&
+       chmod --reference=/etc/tor/torrc "$tmp" &&
+       chown --reference=/etc/tor/torrc "$tmp" &&
+       cat "$tmp" > /etc/tor/torrc; then
+      echo '[+] Removed MeowKit Tor listener directive.'
+    else
+      echo '[!] Could not safely rewrite torrc; original content may need manual review.' >&2
+      failed=1
+    fi
+    rm -f "$tmp"
   fi
 fi
-systemctl daemon-reload
-printf 'MeowKit components removed. Tor itself, gateway settings, SSH settings and unrelated services were left intact.\n'
+run 'Reload systemd' systemctl daemon-reload
+if ((failed)); then
+  echo 'Uninstall completed with warnings. Tor packages, unrelated services, and user-owned overrides were retained.' >&2
+  exit 1
+fi
+echo 'MeowKit removed. Tor itself and unrelated system configuration were retained.'
