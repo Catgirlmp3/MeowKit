@@ -5,7 +5,7 @@ PROFILE=$D/resource-profile.conf
 RUNTIME=$D/runtime.env
 SERVICE=meowkit.service
 ACTION=${1:---apply}
-case "$ACTION" in --apply|--prepare|--dry-run) ;; *) echo "Usage: $0 [--apply|--dry-run]" >&2; exit 2 ;; esac
+case "$ACTION" in --apply|--prepare|--dry-run) ;; *) echo "Usage: $0 [--apply|--prepare|--dry-run]" >&2; exit 2 ;; esac
 [[ -r $PROFILE ]] || { echo "[MeowKit resource] Missing $PROFILE" >&2; exit 1; }
 # Root-owned profile written by the installer.
 source "$PROFILE"
