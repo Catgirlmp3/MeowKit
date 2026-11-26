@@ -4,16 +4,22 @@ POOL='gulf.moneroocean.stream:10001'
 XMRIG_VERSION='6.26.0'
 
 worker_name() {
-  local idfile='/etc/meowkit/worker-id'
-  local id=1
-  install -d -m 750 "$MEOWKIT_DIR"
-  if [[ -f $idfile ]] && grep -Eq '^[0-9]+$' "$idfile"; then
-    id=$(<"$idfile")
-  else
-    printf '%s\n' "$id" > "$idfile"
-    chmod 600 "$idfile"
+  local namefile="$MEOWKIT_DIR/worker-name"
+  install -d -m 750 "$MEOWKIT_DIR" || fail 'Cannot create MeowKit settings directory.'
+
+  # Explicit input wins; otherwise preserve the previously configured identity.
+  if [[ -z ${WORKER_NAME:-} && -r $namefile ]]; then
+    IFS= read -r WORKER_NAME < "$namefile" || true
   fi
-  RIG_NAME="meow$id"
+
+  [[ -n ${WORKER_NAME:-} ]] || fail 'No worker name was supplied. Run the interactive installer or pass --worker-name NAME.'
+
+  [[ $WORKER_NAME =~ ^[A-Za-z0-9._-]{1,32}$ ]] ||
+    fail 'Worker name must be 1-32 characters: letters, numbers, dot, underscore or hyphen.'
+
+  RIG_NAME=$WORKER_NAME
+  printf '%s\n' "$RIG_NAME" > "$namefile" || fail 'Could not save worker name.'
+  chmod 600 "$namefile" || warn 'Could not restrict worker-name permissions.'
 }
 
 install_xmrig() {
