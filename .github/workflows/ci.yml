@@ -32,3 +32,38 @@ jobs:
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md
+
+  xmrig-source-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install XMRig build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libuv1-dev libhwloc-dev
+      - name: Fetch pinned upstream source and verify revision
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch v6.26.0 https://github.com/xmrig/xmrig.git xmrig-src
+          test "$(git -C xmrig-src rev-parse HEAD)" = "b2ca72480c58d197e18c885d9fc1a0c8d517e60a"
+      - name: Apply and verify zero-donation source patch
+        run: |
+          set -euo pipefail
+          sed -i \
+            -e 's/kDefaultDonateLevel = 1;/kDefaultDonateLevel = 0;/' \
+            -e 's/kMinimumDonateLevel = 1;/kMinimumDonateLevel = 0;/' \
+            xmrig-src/src/donate.h
+          grep -Fq 'kDefaultDonateLevel = 0;' xmrig-src/src/donate.h
+          grep -Fq 'kMinimumDonateLevel = 0;' xmrig-src/src/donate.h
+      - name: Compile XMRig
+        run: |
+          set -euo pipefail
+          cmake -S xmrig-src -B xmrig-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_HWLOC=ON \
+            -DWITH_TLS=OFF \
+            -DWITH_OPENCL=OFF \
+            -DWITH_CUDA=OFF \
+            -DWITH_MSR=ON \
+            -DWITH_ASM=ON
+          cmake --build xmrig-build --parallel 2
+          ./xmrig-build/xmrig --version
