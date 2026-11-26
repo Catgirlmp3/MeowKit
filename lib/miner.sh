@@ -21,19 +21,15 @@ install_xmrig() {
   fi
   begin_step 'XMRig download and verification'
   make_workdir
-  local api="$WORKDIR/release.json" asset="$WORKDIR/xmrig.tar.gz" digest url
-  curl_tor --output "$api" "https://api.github.com/repos/xmrig/xmrig/releases/tags/v${XMRIG_VERSION}" || fail 'Could not retrieve XMRig release metadata through Tor.'
-  read -r digest url < <(python3 - "$api" <<'PY'
-import json,sys
-obj=json.load(open(sys.argv[1]))
-for a in obj.get('assets',[]):
-    if a.get('name') == 'xmrig-6.26.0-linux-static-x64.tar.gz':
-        print((a.get('digest') or '').removeprefix('sha256:'), a.get('browser_download_url',''))
-        break
-PY
-)
-  [[ ${digest:-} =~ ^[a-fA-F0-9]{64}$ && ${url:-} == https://github.com/xmrig/* ]] || fail 'Official XMRig release did not provide a usable SHA-256 digest and download URL.'
-  curl_tor --output "$asset" "$url" || fail 'XMRig download failed through Tor.'
+  local asset="$WORKDIR/xmrig.tar.gz"
+  # Pin the official v6.26.0 static x64 asset and its SHA-256. Avoid the
+  # unauthenticated GitHub Releases API: shared Tor exit IPs can receive 403
+  # responses from api.github.com even while Tor connectivity is healthy.
+  # Update the version, URL, and digest together when changing XMRIG_VERSION.
+  local digest='fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5'
+  local url="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
+  [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'The pinned XMRig checksum must be updated before changing XMRIG_VERSION.'
+  curl_tor --output "$asset" "$url" || fail 'Could not download the official XMRig release asset through Tor. The Tor exit node may be blocked; no direct-connection fallback was attempted.'
   printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
   tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
   local extracted="$WORKDIR/xmrig-${XMRIG_VERSION}/xmrig"
