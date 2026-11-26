@@ -47,7 +47,7 @@ sudo apt upgrade -y
 sudo apt install -y git
 ```
 
-Git is needed to retrieve the repository. MeowKit installs its own runtime prerequisites, including Tor and the tools it needs, during setup.
+Git is needed to retrieve the repository and the pinned XMRig source. MeowKit installs its own build prerequisites, including the compiler, CMake, libuv and hwloc development headers, during setup.
 
 You do not need to add manual `vm.nr_hugepages` settings to `/etc/sysctl.conf`. MeowKit manages its 2 MiB huge-page allocation.
 
@@ -112,7 +112,7 @@ During installation, MeowKit:
 
 - Installs missing prerequisites and configures Tor's local SOCKS5 listener on `127.0.0.1:9050`.
 - Installs Tor as the first APT package operation, before refreshing package indexes or installing the remaining prerequisites. It prefers already-cached Debian indexes, then refreshes and retries only if an installation fails. This avoids making an unrelated APT source authentication error block a Tor install that can already be satisfied from the Debian package cache. It then validates the Tor configuration, enables the available Tor systemd unit, and tests the SOCKS5 route. Slow Tor bootstrap is non-fatal; the miner retries through the proxy.
-- Downloads the pinned XMRig release through Tor and verifies its SHA-256 digest before installing it.
+- Fetches the pinned XMRig v6.26.0 source revision directly from GitHub (not through Tor), patches the source donation defaults/minimum to 0%, compiles it locally, and installs the resulting binary. Tor is still required and strictly verified for mining-pool traffic.
 - Detects CPUs available to the current process (respecting VM/cgroup limits), calculates the miner thread count, and sets `CPUQuota` to 100% per miner thread.
 - Calculates 2 MiB and optional 1 GiB huge pages from the configured RAM budget, a host safety reserve, running Proxmox guest memory and the selected thread count.
 - Installs an adaptive resource timer that checks schedule and Proxmox VM/LXC state every 15 seconds. When guest state or the schedule changes, it stops XMRig, adjusts the managed huge-page reservation, writes the new thread count and systemd CPU quota, reloads systemd, restarts the miner and verifies the new process.
@@ -120,7 +120,7 @@ During installation, MeowKit:
 - Writes the miner configuration and creates `meowkit.service`.
 - Enables the service at boot and starts it.
 
-The service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service requests Tor at boot but does not order miner startup behind Tor's systemd readiness notification. If Tor is late after reboot, XMRig starts and retries through the SOCKS5 proxy instead of blocking VM boot. It never falls back to a direct pool connection.
+MeowKit builds XMRig locally from the pinned upstream v6.26.0 source. Its `src/donate.h` defaults and minimum are patched to 0 before compilation, and the generated configuration explicitly sets `donate-level` and `donate-over-proxy` to 0. This is a source modification, not an unsupported runtime override. The upstream GPL-3.0 license and copyright notices remain in the source checkout.\n\nThe service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service requests Tor at boot but does not order miner startup behind Tor's systemd readiness notification. If Tor is late after reboot, XMRig starts and retries through the SOCKS5 proxy instead of blocking VM boot. It never falls back to a direct pool connection.
 
 The initial APT package installation is a bootstrap exception: Tor is installed first using the currently available package indexes. Only if that fails does MeowKit refresh APT indexes and retry. The remaining prerequisites are installed afterwards, with the same install-first/refresh-on-failure approach.
 
