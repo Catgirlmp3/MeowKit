@@ -76,17 +76,19 @@ sudo ./meowkit.sh
 
 The menu offers:
 
-1. **Recommended — 75% CPU allocation.**
-2. **Shared VM — 50% CPU allocation** when another VM or workload shares the host.
-3. **Maximum — 100% CPU allocation**, using every logical CPU available to the guest.
-4. **Custom** — choose 50%, 75% or 100% CPU allocation and the huge-page RAM budget.
-5. **Repair installation** — checks and restores MeowKit-managed components.
-6. **Uninstall MeowKit** — removes the managed miner and service.
+1. **Recommended** — 75% baseline CPU allocation.
+2. **Shared host** — 50% baseline CPU allocation.
+3. **Maximum** — 100% baseline CPU allocation.
+4. **Custom** — enter any CPU percentage (1–100%), huge-page RAM budget (1–100%), VM CPU reduction (0–90%), and time-based schedule settings.
+5. **Repair installation** — restores managed components while preserving the saved worker name and resource profile.
+6. **Uninstall MeowKit** — removes the managed miner, watcher and services.
 7. **Exit** — leaves the system unchanged.
+
+Custom mode is genuinely numeric rather than a set of CPU presets. The default schedule is 08:00–16:00 at 40% of the configured baseline thread count, with the baseline allocation outside that window. The default VM policy reduces the currently selected mining thread count by 50% whenever any Proxmox VM or LXC container is running.
 
 The 100% profile removes MeowKit's CPU headroom allowance. It can make the guest less responsive and can compete with other VMs or host workloads; use it when maximum mining throughput is the priority.
 
-For a first installation, choose the recommended option unless you have a reason to tune the limits. The default CPU allocation is 75%. If running Proxmox guests are detected, automatic mode drops to 50%. A VirtualBox guest cannot reliably see other VMs running on its Windows host, so choose **Shared VM (50%)** when another VM is active. MeowKit never allocates less than 50% of the CPUs visible inside the guest.
+For a first installation, choose the recommended option unless you have a reason to tune the limits. The baseline CPU allocation defaults to 75%. Guest activity does not overwrite that baseline: the adaptive resource manager applies the configured reduction while Proxmox guests are running, then restores the baseline/schedule when they stop. A VirtualBox guest cannot see other VMs running on its Windows host; use **Shared host (50%)** to choose a lower baseline in that situation.
 
 For a non-interactive installation, use:
 
@@ -100,7 +102,7 @@ For a Windows-hosted VirtualBox guest sharing resources with another VM:
 sudo ./meowkit.sh --install --vm-mode shared
 ```
 
-You can also choose a profile with `--cpu-percent 50`, `--cpu-percent 75` or `--cpu-percent 100`, or pass `--threads N`. Explicit thread counts must be at least 50% of the guest's available logical CPUs. The systemd quota is calculated as `N × 100%`, so 18 threads produce `CPUQuota=1800%`.
+You can also set arbitrary values with `--cpu-percent N`, `--ram-percent N`, `--vm-reduction N`, `--day-percent N`, `--day-start HH:MM` and `--day-end HH:MM`, or pass `--threads N`. The systemd quota is calculated as `N × 100%`, so 18 threads produce `CPUQuota=1800%`.
 
 Use `--quiet` for minimal output or `--verbose` for detailed progress.
 
@@ -112,7 +114,8 @@ During installation, MeowKit:
 - Installs Tor as the first APT package operation, before refreshing package indexes or installing the remaining prerequisites. It prefers already-cached Debian indexes, then refreshes and retries only if an installation fails. This avoids making an unrelated APT source authentication error block a Tor install that can already be satisfied from the Debian package cache. It then validates the Tor configuration, enables the available Tor systemd unit, and tests the SOCKS5 route. Slow Tor bootstrap is non-fatal; the miner retries through the proxy.
 - Downloads the pinned XMRig release through Tor and verifies its SHA-256 digest before installing it.
 - Detects CPUs available to the current process (respecting VM/cgroup limits), calculates the miner thread count, and sets `CPUQuota` to 100% per miner thread.
-- Calculates 2 MiB huge pages from available RAM, a safety reserve and selected thread count; it also attempts optional 1 GiB pages when exposed by the kernel.
+- Calculates 2 MiB and optional 1 GiB huge pages from the configured RAM budget, a host safety reserve, running Proxmox guest memory and the selected thread count.
+- Installs an adaptive resource timer that checks schedule and Proxmox VM/LXC state every 15 seconds. When guest state or the schedule changes, it stops XMRig, adjusts the managed huge-page reservation, writes the new thread count and systemd CPU quota, reloads systemd, restarts the miner and verifies the new process.
 - Loads the MSR kernel module where supported and configures it to load at boot.
 - Writes the miner configuration and creates `meowkit.service`.
 - Enables the service at boot and starts it.
@@ -137,7 +140,7 @@ You can also use MeowKit's status command:
 sudo ./meowkit.sh --status
 ```
 
-It reports the service state, whether it is enabled at boot, Tor service state, Tor exit verification, 2 MiB huge-page reservation and whether the MSR module is loaded.
+It reports service/Tor state, huge-page reservations, baseline CPU/RAM settings, VM reduction policy, schedule, adaptive timer state and the currently selected thread count.
 
 If the service is not active, do not assume the install succeeded just because the installer reached its final message. Read the logs in the next step to find the cause.
 
@@ -204,6 +207,14 @@ Run these from the MeowKit repository directory unless the command is a standard
 Repair preserves a valid XMRig binary and worker identity. It restores helpers, recalculates CPU quota and huge pages from current VM resources, attempts Tor verification without making it a boot prerequisite, validates JSON before replacing it, and refreshes the service unit.
 
 ## Resource tuning explained
+
+### Adaptive Proxmox VM profile
+
+The resource watcher polls every 15 seconds for running QEMU VMs (`qm list`) and LXC containers (`pct list`). It applies the configured VM reduction to whichever thread count is currently selected by the time schedule. For example, a 50% reduction halves a 12-thread baseline to 6 threads; if the daytime schedule already reduced that to 5 threads, the VM profile halves the 5-thread value instead (with a minimum of one thread).
+
+When a guest starts or stops, MeowKit stops XMRig, recalculates the huge-page budget using the configured memory of all running guests and a host reserve, updates the runtime thread count and systemd CPUQuota drop-in, runs `systemctl daemon-reload`, restarts the miner and verifies its process. When the last guest stops, it restores the configured baseline or current scheduled allocation. The saved baseline is not rewritten by VM activity.
+
+The watcher can only detect guests on a Proxmox host where `qm` and/or `pct` are available. A VirtualBox guest cannot inspect other VMs on its Windows host. Huge-page pools may refuse to shrink if pages are still in use by another process; MeowKit logs that condition and continues with the pages the kernel makes available.
 
 ### CPU
 
