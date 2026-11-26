@@ -26,10 +26,15 @@ grep -Fq -- '--silent --show-error --fail --socks5-hostname' "$ROOT/lib/miner.sh
 grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
 grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
 
-# XMRig install must not depend on the unauthenticated GitHub Releases API.
-grep -Fq 'https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz' "$ROOT/lib/miner.sh"
-grep -Fq "fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5" "$ROOT/lib/miner.sh"
-! grep -Fq 'api.github.com/repos/xmrig/xmrig/releases' "$ROOT/lib/miner.sh"
+# XMRig is built from a pinned upstream source revision, outside the Tor route.
+grep -Fq "XMRIG_COMMIT='b2ca72480c58d197e18c885d9fc1a0c8d517e60a'" "$ROOT/lib/miner.sh"
+grep -Fq 'git clone --quiet --depth 1 --branch "v$XMRIG_VERSION" https://github.com/xmrig/xmrig.git' "$ROOT/lib/miner.sh"
+grep -Fq 'kDefaultDonateLevel = 0;' "$ROOT/lib/miner.sh"
+grep -Fq 'kMinimumDonateLevel = 0;' "$ROOT/lib/miner.sh"
+grep -Fq '"donate-level": 0' "$ROOT/lib/miner.sh"
+grep -Fq '"donate-over-proxy": 0' "$ROOT/lib/miner.sh"
+grep -Fq 'cmake --build "$build" --parallel "$build_jobs"' "$ROOT/lib/miner.sh"
+! grep -Fq 'curl_tor --output "$asset"' "$ROOT/lib/miner.sh"
 
 # The timer must not pull the miner in, and the watcher must not resurrect it.
 ! grep -Fq 'Wants=meowkit.service' "$ROOT/lib/system.sh"
