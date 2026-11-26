@@ -40,10 +40,12 @@ fi
 
 VM_SIGNATURE=''
 if command -v qm >/dev/null 2>&1; then
-  VM_SIGNATURE+=$(qm list 2>/dev/null | awk 'NR>1 && $3=="running"{print "vm:"$1}' | sort)
+  QM_OUTPUT=$(qm list 2>/dev/null) || { echo '[MeowKit resource] qm list failed; refusing to guess guest state.' >&2; exit 1; }
+  VM_SIGNATURE+=$(awk 'NR>1 && $3=="running"{print "vm:"$1}' <<<"$QM_OUTPUT" | sort)
 fi
 if command -v pct >/dev/null 2>&1; then
-  VM_SIGNATURE+=$(pct list 2>/dev/null | awk 'NR>1 && $2=="running"{print "ct:"$1}' | sort)
+  PCT_OUTPUT=$(pct list 2>/dev/null) || { echo '[MeowKit resource] pct list failed; refusing to guess guest state.' >&2; exit 1; }
+  VM_SIGNATURE+=$(awk 'NR>1 && $2=="running"{print "ct:"$1}' <<<"$PCT_OUTPUT" | sort)
 fi
 VM_SIGNATURE=${VM_SIGNATURE:-none}
 VM_ACTIVE=0
