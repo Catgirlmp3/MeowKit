@@ -24,6 +24,11 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/resource-watch.sh
+      - name: Check installer safety regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/installer-safety.sh
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md
