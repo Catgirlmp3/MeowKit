@@ -14,6 +14,8 @@ MODE=quiet
 ACTION=install
 REPAIR=0
 RAM_PERCENT=${RAM_PERCENT:-75}
+WORKER_NAME=${WORKER_NAME:-}
+WORKER_NAME_EXPLICIT=0
 
 usage() {
   cat <<'TXT'
@@ -36,7 +38,7 @@ while (($#)); do
   case "$1" in
     --quiet) MODE=quiet ;;
     --verbose) MODE=verbose ;;
-    --worker-name) shift; WORKER_NAME=${1:?Missing worker name} ;;
+    --worker-name) shift; WORKER_NAME=${1:?Missing worker name}; WORKER_NAME_EXPLICIT=1 ;;
     --status) ACTION=status ;;
     --install) ACTION=install ;;
     --repair) ACTION=repair ;;
@@ -118,10 +120,18 @@ fi
 # The install menu (recommended/custom) and direct CLI installs use the same
 # prompt. A saved identity is reused for repairs; no automatic meow<N> counter.
 if [[ $ACTION == install || $ACTION == repair ]]; then
-  if [[ -z ${WORKER_NAME:-} && -r /etc/meowkit/worker-name ]]; then
-    IFS= read -r WORKER_NAME < /etc/meowkit/worker-name || true
+  saved_worker_name=''
+  if [[ -r /etc/meowkit/worker-name ]]; then
+    IFS= read -r saved_worker_name < /etc/meowkit/worker-name || true
   fi
-  if [[ -z ${WORKER_NAME:-} && -t 0 ]]; then
+  if [[ $ACTION == install && -t 0 && $WORKER_NAME_EXPLICIT == 0 ]]; then
+    suggested_name=${saved_worker_name:-$(hostname -s 2>/dev/null || printf 'meow-worker')}
+    read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
+    WORKER_NAME=${WORKER_NAME:-$suggested_name}
+  elif [[ -z ${WORKER_NAME:-} ]]; then
+    WORKER_NAME=$saved_worker_name
+  fi
+  if [[ -z ${WORKER_NAME:-} && $ACTION == repair && -t 0 ]]; then
     suggested_name=$(hostname -s 2>/dev/null || printf 'meow-worker')
     read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
     WORKER_NAME=${WORKER_NAME:-$suggested_name}
