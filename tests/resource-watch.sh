@@ -20,7 +20,7 @@ cat > "$TMP/bin/qm" <<'EOFQM'
 printf ' VMID NAME STATUS\n 100 test running\n'
 EOFQM
 chmod +x "$TMP/bin/qm"
-out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash "$ROOT/commands/resource-watch.sh" --dry-run)
+out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash bash "$ROOT/commands/resource-watch.sh" --dry-run)
 grep -Fq 'Schedule active: 1' <<<"$out"
 grep -Fq 'Running guests: vm:100' <<<"$out"
 grep -Fq 'VM reduction: 50%' <<<"$out"
@@ -28,7 +28,7 @@ grep -Fq 'Selected threads: 3' <<<"$out"
 grep -Fq 'CPUQuota: 300%' <<<"$out"
 printf 'PASS scheduled 40%% baseline plus 50%% VM reduction -> 3/16 threads\n'
 
-out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=17:00 "$ROOT/commands/resource-watch.sh" --dry-run)
+out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=17:00 bash "$ROOT/commands/resource-watch.sh" --dry-run)
 grep -Fq 'Selected threads: 8' <<<"$out"
 printf 'PASS outside schedule with VM active -> 8/16 threads\n'
 
@@ -37,7 +37,7 @@ cat > "$TMP/bin/qm" <<'EOFQM'
 printf ' VMID NAME STATUS\n 100 test stopped\n'
 EOFQM
 chmod +x "$TMP/bin/qm"
-out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 "$ROOT/commands/resource-watch.sh" --dry-run)
+out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash "$ROOT/commands/resource-watch.sh" --dry-run)
 grep -Fq 'Running guests: none' <<<"$out"
 grep -Fq 'VM reduction: 0%' <<<"$out"
 grep -Fq 'Selected threads: 6' <<<"$out"
