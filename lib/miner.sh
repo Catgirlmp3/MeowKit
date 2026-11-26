@@ -88,7 +88,11 @@ EOFJSON
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
   # Re-run after config.json exists so the helper can set XMRig's 1 GiB page flag.
   [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
-  printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$MEOWKIT_DIR/runtime.env"
+  # Keep the runtime environment variable and the generated ExecStart
+  # argument in sync. Do not reference an unset MEOWKIT_THREADS under set -u.
+  [[ ${THREADS:-} =~ ^[1-9][0-9]*$ ]] || fail 'Detected miner thread count is missing or invalid.'
+  MEOWKIT_THREADS=$THREADS
+  printf 'MEOWKIT_THREADS=%s\n' "$MEOWKIT_THREADS" > "$MEOWKIT_DIR/runtime.env"
   chmod 640 "$MEOWKIT_DIR/runtime.env"
   write_tor_check
   # Only expose huge-page sysfs paths that actually exist on this kernel.
@@ -105,6 +109,19 @@ EOFJSON
 
   local hp_pre=''
   if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
+
+  # A previous failed/manual install may have left systemd's standard
+  # mask symlink here. Remove only that exact /dev/null mask; never follow or
+  # overwrite an unrelated symlink or non-regular path.
+  if [[ -L $MEOWKIT_SERVICE ]]; then
+    local service_link
+    service_link=$(readlink "$MEOWKIT_SERVICE") || fail 'Could not inspect existing MeowKit service symlink.'
+    [[ $service_link == /dev/null ]] || fail "Refusing to replace unexpected service symlink: $MEOWKIT_SERVICE -> $service_link"
+    rm -f -- "$MEOWKIT_SERVICE" || fail 'Could not remove the stale systemd mask for meowkit.service.'
+    info 'Removed stale systemd mask for meowkit.service.'
+  elif [[ -e $MEOWKIT_SERVICE && ! -f $MEOWKIT_SERVICE ]]; then
+    fail "$MEOWKIT_SERVICE exists but is not a regular file."
+  fi
 
   cat > "$MEOWKIT_SERVICE" <<EOFUNIT
 [Unit]
