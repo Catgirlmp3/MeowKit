@@ -20,7 +20,7 @@ cat > "$TMP/bin/qm" <<'EOFQM'
 printf ' VMID NAME STATUS\n 100 test running\n'
 EOFQM
 chmod +x "$TMP/bin/qm"
-out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash bash "$ROOT/commands/resource-watch.sh" --dry-run)
+out=$(MEOWKIT_DIR="$D" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash "$ROOT/commands/resource-watch.sh" --dry-run)
 grep -Fq 'Schedule active: 1' <<<"$out"
 grep -Fq 'Running guests: vm:100' <<<"$out"
 grep -Fq 'VM reduction: 50%' <<<"$out"
