@@ -16,6 +16,10 @@ source "$SCHED"
 [[ -r $D/resources.conf ]] && { # shellcheck disable=SC1090
   source "$D/resources.conf"
 }
+if [[ ! ${DAY_PERCENT+x} && ${BASE_THREADS:-0} =~ ^[1-9][0-9]*$ && ${DAY_THREADS:-0} =~ ^[1-9][0-9]*$ ]]; then
+  DAY_PERCENT=$((DAY_THREADS * 100 / BASE_THREADS))
+  (( DAY_PERCENT > 0 )) || DAY_PERCENT=1
+fi
 : "${SCHEDULE_ENABLED:=1}" "${DAY_START:=08:00}" "${DAY_END:=16:00}" "${DAY_THREADS:=8}" "${DAY_PERCENT:=40}" "${BASE_THREADS:=1}" "${TOTAL_THREADS:=1}" "${TIMEZONE:=Europe/Dublin}" "${VM_CPU_REDUCTION_PERCENT:=50}"
 [[ $SCHEDULE_ENABLED =~ ^[01]$ ]] || fail "SCHEDULE_ENABLED must be 0 or 1."
 for t in "$DAY_START" "$DAY_END"; do [[ $t =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || fail "Invalid schedule time: $t"; done
