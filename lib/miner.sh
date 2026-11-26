@@ -29,7 +29,9 @@ install_xmrig() {
   local digest='fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5'
   local url="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
   [[ $XMRIG_VERSION == '6.26.0' ]] || fail 'The pinned XMRig checksum must be updated before changing XMRIG_VERSION.'
+  info 'Downloading XMRig through Tor; this can take a few minutes on a slow exit node.'
   curl_tor --output "$asset" "$url" || fail 'Could not download the official XMRig release asset through Tor. The Tor exit node may be blocked; no direct-connection fallback was attempted.'
+  info 'XMRig download complete; verifying SHA-256.'
   printf '%s  %s\n' "$digest" "$asset" | sha256sum --check --status || fail 'XMRig SHA-256 verification failed.'
   tar -xzf "$asset" -C "$WORKDIR" || fail 'Could not unpack XMRig archive.'
   local extracted="$WORKDIR/xmrig-${XMRIG_VERSION}/xmrig"
@@ -153,6 +155,7 @@ EOFUNIT
   systemd-analyze verify "$MEOWKIT_SERVICE" || fail 'systemd rejected the generated service unit.'
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
+  info 'Starting the MeowKit systemd service.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
   if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
     /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
