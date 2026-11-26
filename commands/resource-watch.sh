@@ -78,6 +78,15 @@ trap 'rm -rf -- "$TMP"' EXIT
 [[ -f $DROPIN ]] && cp -a "$DROPIN" "$TMP/dropin.old" || : > "$TMP/dropin.absent"
 [[ -f $D/hugepages.conf ]] && cp -a "$D/hugepages.conf" "$TMP/hugepages.old" || : > "$TMP/hugepages.absent"
 
+restore_previous() {
+  [[ -f "$TMP/runtime.old" ]] && cp -a "$TMP/runtime.old" "$RUNTIME" || rm -f "$RUNTIME"
+  [[ -f "$TMP/dropin.old" ]] && cp -a "$TMP/dropin.old" "$DROPIN" || rm -f "$DROPIN"
+  [[ -f "$TMP/hugepages.old" ]] && cp -a "$TMP/hugepages.old" "$D/hugepages.conf" || rm -f "$D/hugepages.conf"
+  systemctl daemon-reload || true
+  [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
+  systemctl restart "$SERVICE" || true
+}
+
 echo "[MeowKit resource] Applying $THREADS threads; VM signature=$VM_SIGNATURE; CPUQuota=${CPU_QUOTA}%."
 systemctl stop "$SERVICE"
 printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$TMP/runtime.new"
@@ -96,13 +105,17 @@ EOFHP
 if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then
   /usr/local/sbin/meowkit-hugepages || echo '[MeowKit resource] Huge-page recalculation returned a warning; continuing.' >&2
 fi
-systemctl daemon-reload
+if ! systemctl daemon-reload; then
+  echo '[MeowKit resource] systemd daemon-reload failed; restoring previous profile.' >&2
+  restore_previous
+  exit 1
+fi
 
 restart_and_verify(){
   local attempt pid cmd tick
   for attempt in 1 2 3; do
     systemctl restart "$SERVICE" || true
-    for ((tick=0; tick<20; tick++)); do
+    for ((tick=0; tick<45; tick++)); do
       if systemctl is-active --quiet "$SERVICE"; then
         pid=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
         if [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]]; then
@@ -124,10 +137,5 @@ if restart_and_verify; then
 fi
 
 echo '[MeowKit resource] New profile failed; restoring the previous settings.' >&2
-[[ -f $TMP/runtime.old ]] && cp -a "$TMP/runtime.old" "$RUNTIME" || rm -f "$RUNTIME"
-[[ -f $TMP/dropin.old ]] && cp -a "$TMP/dropin.old" "$DROPIN" || rm -f "$DROPIN"
-[[ -f $TMP/hugepages.old ]] && cp -a "$TMP/hugepages.old" "$D/hugepages.conf" || rm -f "$D/hugepages.conf"
-systemctl daemon-reload || true
-[[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
-systemctl restart "$SERVICE" || true
+restore_previous
 exit 1
