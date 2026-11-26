@@ -86,6 +86,8 @@ EOFJSON
   chmod 640 "$tmp"
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
+  printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$MEOWKIT_DIR/runtime.env"
+  chmod 640 "$MEOWKIT_DIR/runtime.env"
   write_tor_check
   # Only expose huge-page sysfs paths that actually exist on this kernel.
   # Keep each path a separate systemd ReadWritePaths argument; concatenating
@@ -112,7 +114,8 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 ${hp_pre}
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${THREADS}
+EnvironmentFile=${MEOWKIT_DIR}/runtime.env
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${MEOWKIT_THREADS}
 Restart=always
 RestartSec=30
 Nice=10
@@ -135,6 +138,10 @@ EOFUNIT
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
+  if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
+    /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
+    systemctl enable --now meowkit-resource-watch.timer >/dev/null 2>&1 || warn 'Could not enable the adaptive resource timer.'
+  fi
 }
 
 run_install() {
@@ -151,6 +158,7 @@ run_install() {
   require_cmd sha256sum
   configure_msr
   configure_hugepages
+  configure_resource_manager
   install_xmrig
   write_configuration
   info "Installed meowkit.service; worker ${RIG_NAME}; ${THREADS}/${TOTAL_THREADS} available CPU threads; CPUQuota=${CPU_QUOTA}%."
