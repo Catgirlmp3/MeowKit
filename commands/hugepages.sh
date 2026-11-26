@@ -18,7 +18,7 @@ case "$ACTION" in
       for spec in "$HP1:BASELINE_ONE_GB_PAGES" "$HP2:BASELINE_TWO_MB_PAGES"; do
         path=${spec%%:*}; key=${spec#*:}; value=${!key:-}
         [[ $value =~ ^[0-9]+$ && -w $path ]] || continue
-        printf '%s\\n' "$value" > "$path" 2>/dev/null || log "Could not restore $path to its pre-MeowKit value."
+        printf '%s\n' "$value" > "$path" 2>/dev/null || log "Could not restore $path to its pre-MeowKit value."
       done
       log 'Attempted to restore pre-MeowKit huge-page reservations.'
     fi
