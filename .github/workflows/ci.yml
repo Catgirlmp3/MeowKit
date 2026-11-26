@@ -82,7 +82,8 @@ jobs:
           install -m 755 xmrig-build/xmrig-notls vendor/xmrig/linux-x86_64/meowkit-xmrig
           strip vendor/xmrig/linux-x86_64/meowkit-xmrig
           vendor/xmrig/linux-x86_64/meowkit-xmrig --version | grep -F '6.26.0'
-          sha256sum vendor/xmrig/linux-x86_64/meowkit-xmrig > vendor/xmrig/linux-x86_64/SHA256SUMS
+          (cd vendor/xmrig/linux-x86_64 && sha256sum meowkit-xmrig > SHA256SUMS)
+          ! ldd vendor/xmrig/linux-x86_64/meowkit-xmrig | grep -F 'not found'
       - name: Commit the generated binary to the same-repository PR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
