@@ -41,6 +41,15 @@ jobs:
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md
+      - name: Verify bundled XMRig binary
+        if: hashFiles('vendor/xmrig/linux-x86_64/meowkit-xmrig') != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libuv1 libhwloc15
+          (cd vendor/xmrig/linux-x86_64 && sha256sum --check SHA256SUMS)
+          vendor/xmrig/linux-x86_64/meowkit-xmrig --version | grep -F '6.26.0'
+
 
   xmrig-source-build:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
