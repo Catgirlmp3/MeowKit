@@ -11,7 +11,7 @@ grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 grep -Fq 'Miner is not active; leaving it stopped.' "$ROOT/commands/resource-watch.sh"
 
 # Restore must write a real newline, not a literal backslash-n.
-grep -Fq "printf '%s\\n' \"\$value\"" "$ROOT/commands/hugepages.sh"
+grep -Fq "printf '%s\n' \"\$value\"" "$ROOT/commands/hugepages.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
