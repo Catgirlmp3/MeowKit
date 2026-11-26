@@ -44,7 +44,7 @@ write_tor_check() {
 #!/bin/sh
 set -eu
 response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
-printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)'
+printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' || { echo '[MeowKit] Tor pre-start check failed: proxy response did not confirm a Tor exit node.' >&2; exit 1; }
 EOFCHK
   chmod 755 /usr/local/sbin/meowkit-tor-check
 }
