@@ -19,7 +19,7 @@ worker_name() {
 
   RIG_NAME=$WORKER_NAME
   printf '%s\n' "$RIG_NAME" > "$namefile" || fail 'Could not save worker name.'
-  chmod 600 "$namefile" || warn 'Could not restrict worker-name permissions.'
+  chmod 600 "$namefile" || printf '[!] Could not restrict worker-name permissions.\n' >&2
 }
 
 install_xmrig() {
