@@ -97,7 +97,7 @@ show_menu() {
   [6] Uninstall MeowKit
   [7] Exit
 TXT
-  printf '\n  Output mode: [Q] Quiet  [V] Verbose\n\n'
+  printf '\n  Log mode: 1) normal  2) errors only  3) none\n\n'
 }
 
 if [[ $ACTION == install && -t 0 && -z ${MEOWKIT_NONINTERACTIVE:-} ]]; then
