@@ -9,9 +9,9 @@ grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 # Runtime Tor preflight must retry slow circuits and have enough systemd startup time.
 grep -Fq 'max_attempts=8' "$ROOT/lib/miner.sh"
 grep -Fq 'sleep 5' "$ROOT/lib/miner.sh"
-grep -Fq 'TimeoutStartSec=330' "$ROOT/lib/miner.sh"
+grep -Fq 'TimeoutStartSec=420' "$ROOT/lib/miner.sh"
 grep -Fq -- '--prepare' "$ROOT/lib/miner.sh"
-grep -Fq 'TimeoutStartSec=420' "$ROOT/lib/system.sh"
+grep -Fq 'TimeoutStartSec=500' "$ROOT/lib/system.sh"
 grep -Fq 'systemctl restart "$SERVICE" || true' "$ROOT/commands/resource-watch.sh"
 
 # The generated service must define the exact variable used in ExecStart,
