@@ -8,7 +8,8 @@ rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-schedule.s
   /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-tor-check \
   /usr/local/sbin/meowkit-hugepages /usr/local/sbin/meowkit-schedule \
   /usr/local/sbin/meowkit-msr-enable /etc/modules-load.d/meowkit-msr.conf \
-  /etc/modprobe.d/meowkit-msr.conf
+  /etc/modprobe.d/meowkit-msr.conf /etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
+rmdir /etc/systemd/system/meowkit.service.d 2>/dev/null || true
 rm -rf /etc/meowkit
 
 # Remove only the exact marker/directive pair that MeowKit manages.
