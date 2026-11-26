@@ -3,12 +3,15 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Tor must be both ordered before the miner and verified before ExecStart.
-grep -Fq 'After=network-online.target ${TOR_UNIT}' "$ROOT/lib/miner.sh"
+grep -Fq 'After=network-online.target' "$ROOT/lib/miner.sh"
+! grep -Fq 'After=network-online.target ${TOR_UNIT}' "$ROOT/lib/miner.sh" "$ROOT/lib/miner.sh"
 grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
 # Runtime Tor preflight must retry slow circuits and have enough systemd startup time.
 grep -Fq 'max_attempts=8' "$ROOT/lib/miner.sh"
 grep -Fq 'sleep 5' "$ROOT/lib/miner.sh"
-grep -Fq 'TimeoutStartSec=210' "$ROOT/lib/miner.sh"
+grep -Fq 'TimeoutStartSec=330' "$ROOT/lib/miner.sh"
+grep -Fq -- '--prepare' "$ROOT/lib/miner.sh"
+grep -Fq 'TimeoutStartSec=420' "$ROOT/lib/system.sh"
 
 # The generated service must define the exact variable used in ExecStart,
 # and only remove systemd's conventional /dev/null mask (not arbitrary links).
@@ -30,6 +33,7 @@ grep -Fq "fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5" "$RO
 # The timer must not pull the miner in, and the watcher must not resurrect it.
 ! grep -Fq 'Wants=meowkit.service' "$ROOT/lib/system.sh"
 grep -Fq 'Miner is not active; leaving it stopped.' "$ROOT/commands/resource-watch.sh"
+grep -Fq 'ACTION == --prepare' "$ROOT/commands/resource-watch.sh" "$ROOT/commands/resource-watch.sh"
 
 # Restore must write a real newline, not a literal backslash-n.
 grep -Fq "printf '%s\n' \"\$value\"" "$ROOT/commands/hugepages.sh"
