@@ -148,7 +148,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 # Tor preflight (195s worst case) plus bounded huge-page preparation (104s worst case).
-TimeoutStartSec=330
+TimeoutStartSec=420
 ${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
