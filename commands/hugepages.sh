@@ -93,7 +93,9 @@ fi
 # time-bounded batches. Never shrink pages that may belong to another workload.
 ONE_GB=0
 DESIRED1=$BASELINE1
-TARGET2=$(((TARGET_MB + 1) / 2))
+REMAIN_MB=$((TARGET_MB - ACTUAL1 * 1024))
+(( REMAIN_MB > 0 )) || REMAIN_MB=0
+TARGET2=$(((REMAIN_MB + 1) / 2))
 DESIRED2=$BASELINE2
 (( TARGET2 > DESIRED2 )) && DESIRED2=$TARGET2
 
