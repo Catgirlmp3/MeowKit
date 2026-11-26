@@ -18,10 +18,11 @@ RAM_PERCENT=${RAM_PERCENT:-75}
 usage() {
   cat <<'TXT'
 MeowKit
-Usage: sudo ./meowkit.sh [--quiet|--verbose] [--status|--install|--repair|--schedule|--schedule-dry-run]
+Usage: sudo ./meowkit.sh [--quiet|--verbose] [--worker-name NAME] [--status|--install|--repair|--schedule|--schedule-dry-run]
 
   --quiet              Minimal installer output (default)
   --verbose            Show detailed progress
+  --worker-name NAME   Set the MoneroOcean worker/rig name (1-32 safe characters)
   --status             Show service, schedule, huge-page and MSR status
   --install            Run the installer
   --repair             Repair managed components and restart the miner
@@ -35,6 +36,7 @@ while (($#)); do
   case "$1" in
     --quiet) MODE=quiet ;;
     --verbose) MODE=verbose ;;
+    --worker-name) shift; WORKER_NAME=${1:?Missing worker name} ;;
     --status) ACTION=status ;;
     --install) ACTION=install ;;
     --repair) ACTION=repair ;;
@@ -112,7 +114,19 @@ if [[ $ACTION == install && -t 0 && $MODE == quiet ]]; then
   [[ ${selected_mode,,} == v ]] && MODE=verbose
 fi
 
+# Ask once, before the lengthy install/bootstrap work. The same prompt is used
+# by the installer's menu (recommended and custom installs).
+if [[ $ACTION == install && -z ${WORKER_NAME:-} && -t 0 ]]; then
+  suggested_name=$(hostname -s 2>/dev/null || printf 'meow-worker')
+  read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
+  WORKER_NAME=${WORKER_NAME:-$suggested_name}
+fi
+
 if [[ $ACTION == repair ]]; then
+  # Repairs retain the identity already assigned to this machine.
+  if [[ -z ${WORKER_NAME:-} && -r /etc/meowkit/worker-name ]]; then
+    IFS= read -r WORKER_NAME < /etc/meowkit/worker-name || true
+  fi
   REPAIR=1
   if [[ -r /etc/meowkit/resources.conf ]]; then
     # Preserve the installer's original baseline percentage, not the daytime hint.
