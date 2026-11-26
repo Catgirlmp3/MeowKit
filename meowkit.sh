@@ -106,10 +106,10 @@ if [[ $ACTION == install && -t 0 && $MODE == quiet ]]; then
   case "$choice" in
     1) ;;
     2)
-      read -r -p '  Baseline CPU allocation % [75] (10-100): ' CUSTOM_CPU; CUSTOM_CPU=${CUSTOM_CPU:-75}
-      [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=10 && CUSTOM_CPU<=100)) || fail 'CPU allocation must be 10-100%.'
-      read -r -p '  Huge-page RAM budget % [75] (10-90): ' CUSTOM_RAM; CUSTOM_RAM=${CUSTOM_RAM:-75}
-      [[ $CUSTOM_RAM =~ ^[0-9]+$ ]] && ((CUSTOM_RAM>=10 && CUSTOM_RAM<=90)) || fail 'RAM budget must be 10-90%.'
+      read -r -p '  Baseline CPU allocation % [75] (1-100): ' CUSTOM_CPU; CUSTOM_CPU=${CUSTOM_CPU:-75}
+      [[ $CUSTOM_CPU =~ ^[0-9]+$ ]] && ((CUSTOM_CPU>=1 && CUSTOM_CPU<=100)) || fail 'CPU allocation must be 10-100%.'
+      read -r -p '  Huge-page RAM budget % [75] (1-100): ' CUSTOM_RAM; CUSTOM_RAM=${CUSTOM_RAM:-75}
+      [[ $CUSTOM_RAM =~ ^[0-9]+$ ]] && ((CUSTOM_RAM>=1 && CUSTOM_RAM<=100)) || fail 'RAM budget must be 1-100%.'
       read -r -p '  CPU reduction while any Proxmox guest is running % [50] (0-90): ' CUSTOM_VM; CUSTOM_VM=${CUSTOM_VM:-50}
       [[ $CUSTOM_VM =~ ^[0-9]+$ ]] && ((CUSTOM_VM>=0 && CUSTOM_VM<=90)) || fail 'VM CPU reduction must be 0-90%.'
       read -r -p '  Enable time-based mining schedule? [Y/n]: ' CUSTOM_SCHEDULE
@@ -117,7 +117,7 @@ if [[ $ACTION == install && -t 0 && $MODE == quiet ]]; then
       if ((SCHEDULE_ENABLED)); then
         read -r -p '  Reduced mining window start [08:00]: ' DAY_START; DAY_START=${DAY_START:-08:00}
         read -r -p '  Reduced mining window end [16:00]: ' DAY_END; DAY_END=${DAY_END:-16:00}
-        read -r -p '  CPU allocation during that window % [40]: ' DAY_PERCENT; DAY_PERCENT=${DAY_PERCENT:-40}
+        read -r -p '  CPU allocation during that window (% of baseline) [40]: ' DAY_PERCENT; DAY_PERCENT=${DAY_PERCENT:-40}
         [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT>=1 && DAY_PERCENT<=100)) || fail 'Scheduled CPU allocation must be 1-100%.'
         for schedule_time in "$DAY_START" "$DAY_END"; do
           [[ $schedule_time =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || fail "Invalid schedule time: $schedule_time"
