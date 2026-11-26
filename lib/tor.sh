@@ -20,7 +20,7 @@ bootstrap_tor() {
 
   # Install the remaining runtime/download tools only after Tor is present.
   # Prefer cached indexes; refresh and retry only if the package install needs it.
-  local packages=(curl python3 tar gzip ca-certificates)
+  local packages=(curl python3 tar gzip ca-certificates git build-essential cmake libuv1-dev libhwloc-dev)
   local missing=()
   for package in "${packages[@]}"; do
     status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null || true)
