@@ -17,6 +17,7 @@ chmod 755 "$FIXTURE/meowkit-xmrig"
 
 begin_step() { :; }
 info() { :; }
+log() { :; }
 warn() { :; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 make_workdir() { WORKDIR=$(mktemp -d "$TMP/work.XXXXXX"); }
