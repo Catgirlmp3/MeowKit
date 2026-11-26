@@ -5,9 +5,11 @@ on:
     branches: [main, meowkit-v2-restructure, feat/modular-installer]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   syntax:
@@ -34,8 +36,12 @@ jobs:
           ! grep -Fq '\\n\\n' README.md
 
   xmrig-source-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - name: Install XMRig build dependencies
         run: |
           sudo apt-get update
@@ -66,4 +72,32 @@ jobs:
             -DWITH_MSR=ON \
             -DWITH_ASM=ON
           cmake --build xmrig-build --parallel 2
-          ./xmrig-build/xmrig --version
+          test -x xmrig-build/xmrig-notls
+          ./xmrig-build/xmrig-notls --version
+      - name: Package the precompiled MeowKit binary
+        run: |
+          set -euo pipefail
+          install -d -m 755 vendor/xmrig/linux-x86_64
+          install -m 755 xmrig-build/xmrig-notls vendor/xmrig/linux-x86_64/meowkit-xmrig
+          strip vendor/xmrig/linux-x86_64/meowkit-xmrig
+          vendor/xmrig/linux-x86_64/meowkit-xmrig --version | grep -F '6.26.0'
+          sha256sum vendor/xmrig/linux-x86_64/meowkit-xmrig > vendor/xmrig/linux-x86_64/SHA256SUMS
+      - name: Commit the generated binary to the same-repository PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vendor/xmrig/linux-x86_64/meowkit-xmrig vendor/xmrig/linux-x86_64/SHA256SUMS
+          if git diff --cached --quiet; then
+            echo 'Bundled XMRig binary is already up to date.'
+            exit 0
+          fi
+          git commit -m 'build: bundle pinned zero-donation XMRig binary'
+          git push origin "HEAD:$PR_BRANCH"
+          # GITHUB_TOKEN pushes do not trigger a new push workflow. Explicitly
+          # dispatch CI against the new PR head so its checks cover the bundle.
+          gh workflow run ci.yml --ref "$PR_BRANCH"
