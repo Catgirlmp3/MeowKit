@@ -44,4 +44,17 @@ if grep -qw msr /proc/modules || [[ -d /sys/module/msr ]]; then
 else printf 'not loaded\n'; fi
 printf 'MSR read probe: '
 if command -v rdmsr >/dev/null 2>&1 && rdmsr -p 0 0x10 >/dev/null 2>&1; then printf 'successful\n'; else printf 'failed/unavailable\n'; fi
+if [[ -r /etc/meowkit/resources.conf ]]; then
+  # Root-owned MeowKit resource profile.
+  # shellcheck source=/dev/null
+  source /etc/meowkit/resources.conf
+  printf 'Configured baseline CPU: %s%%\n' "${CPU_PERCENT:-unknown}"
+  printf 'Huge-page RAM budget: %s%%\n' "${RAM_PERCENT:-unknown}"
+  printf 'CPU reduction with Proxmox guests: %s%%\n' "${VM_CPU_REDUCTION_PERCENT:-50}"
+fi
+printf 'Running Proxmox guests: '
+guests=''
+if command -v qm >/dev/null 2>&1; then guests+=$(qm list 2>/dev/null | awk 'NR>1 && $3=="running"{printf "VM %s ",$1}'); fi
+if command -v pct >/dev/null 2>&1; then guests+=$(pct list 2>/dev/null | awk 'NR>1 && $2=="running"{printf "CT %s ",$1}'); fi
+printf '%s\n' "${guests:-none}"
 printf 'Recent miner logs: sudo journalctl -u meowkit.service -n 50 --no-pager\n'
