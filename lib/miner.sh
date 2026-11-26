@@ -55,7 +55,7 @@ write_configuration() {
   case $LOG_MODE in
     normal) LOG_STDOUT=journal; LOG_STDERR=journal ;;
     errors) LOG_STDOUT=null; LOG_STDERR=journal ;;
-    none) LOG_STDOUT=null; LOG_STDERR=null ;;
+    none) LOG_STDOUT=null; LOG_STDERR=journal ;;
     *) fail 'Log mode must be normal, errors or none.' ;;
   esac
   [[ ! -e $MEOWKIT_DIR || -d $MEOWKIT_DIR ]] || fail "$MEOWKIT_DIR exists but is not a directory."
@@ -133,7 +133,7 @@ Type=simple
 ${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
-ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${MEOWKIT_THREADS}
+ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=\${MEOWKIT_THREADS}
 Restart=always
 RestartSec=30
 Nice=10
