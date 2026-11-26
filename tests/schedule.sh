@@ -19,6 +19,7 @@ DAY_THREADS=8
 BASE_THREADS=16
 TOTAL_THREADS=16
 TIMEZONE=UTC
+VM_CPU_REDUCTION_PERCENT=50
 EOF
 }
 expect_threads(){
@@ -44,4 +45,18 @@ expect_threads 05:59 8
 expect_threads 06:00 16
 write_schedule 0 08:00 16:00
 expect_threads 12:00 16
+
+# A running Proxmox VM applies the configured reduction to the selected
+# baseline/scheduled thread count, without changing the saved baseline.
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/qm" <<'EOFQM'
+#!/usr/bin/env bash
+printf ' VMID NAME STATUS\n 100 test running\n'
+EOFQM
+chmod +x "$TMP/bin/qm"
+out=$(PATH="$TMP/bin:$PATH" "$TMP/scheduler.sh" --dry-run)
+grep -Fq 'Running guests: vm:100' <<<"$out"
+grep -Fq 'VM CPU reduction: 50%' <<<"$out"
+grep -Fq 'Selected threads: 8' <<<"$out"
+echo "PASS running VM applies 50% reduction"
 echo "All schedule boundary tests passed."
