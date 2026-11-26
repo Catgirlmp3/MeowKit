@@ -33,6 +33,7 @@ grep -Fq 'kDefaultDonateLevel = 0;' "$ROOT/lib/miner.sh"
 grep -Fq 'kMinimumDonateLevel = 0;' "$ROOT/lib/miner.sh"
 grep -Fq '"donate-level": 0' "$ROOT/lib/miner.sh"
 grep -Fq '"donate-over-proxy": 0' "$ROOT/lib/miner.sh"
+grep -Fq 'local packages=(curl python3 tar gzip ca-certificates git build-essential cmake libuv1-dev libhwloc-dev)' "$ROOT/lib/tor.sh"
 grep -Fq 'cmake --build "$build" --parallel "$build_jobs"' "$ROOT/lib/miner.sh"
 ! grep -Fq 'curl_tor --output "$asset"' "$ROOT/lib/miner.sh"
 
