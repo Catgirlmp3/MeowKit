@@ -145,8 +145,8 @@ EOFSVC
 Description=Check MeowKit mining schedule every minute
 
 [Timer]
-OnCalendar=*-*-* *:*:00
-Persistent=true
+OnBootSec=15s
+OnUnitActiveSec=15s
 AccuracySec=1s
 Unit=meowkit-schedule.service
 
