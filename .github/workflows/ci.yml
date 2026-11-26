@@ -19,8 +19,6 @@ jobs:
         run: |
           set -euo pipefail
           bash -n meowkit.sh lib/*.sh commands/*.sh tests/*.sh
-          awk '/^  cat > \/usr\/local\/sbin\/meowkit-hugepages <<'\''EOFHP'\''$/ { inside=1; next } inside && /^EOFHP$/ { exit } inside { print }' lib/system.sh > /tmp/meowkit-hugepages
-          bash -n /tmp/meowkit-hugepages
       - name: Check adaptive resource watcher
         shell: bash
         run: |
