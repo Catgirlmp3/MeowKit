@@ -64,6 +64,11 @@ if [[ $ACTION == --dry-run ]]; then
   exit 0
 fi
 [[ $EUID -eq 0 ]] || { echo 'Run as root.' >&2; exit 1; }
+# A timer tick must never resurrect a miner that an operator intentionally stopped.
+if ! systemctl is-active --quiet "$SERVICE"; then
+  echo '[MeowKit resource] Miner is not active; leaving it stopped.'
+  exit 0
+fi
 command -v flock >/dev/null || { echo 'flock is required.' >&2; exit 1; }
 exec 9>"$D/.resource-watch.lock"; flock -n 9 || exit 0
 if [[ $CURRENT == "$THREADS" && $OLD_SIGNATURE == "$VM_SIGNATURE" && -f $DROPIN ]] &&
