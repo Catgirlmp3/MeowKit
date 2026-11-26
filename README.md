@@ -77,12 +77,12 @@ sudo ./meowkit.sh
 The menu offers:
 
 1. **Recommended installation** — detects the system and applies the default resource settings.
-2. **Custom installation** — lets you choose CPU allocation and the huge-page RAM budget.
+2. **Custom installation** — lets you enter any supported CPU allocation (10–100%), huge-page RAM budget (10–90%), VM CPU reduction (0–90%), and schedule settings. These are numeric inputs, not fixed presets.
 3. **Repair installation** — checks and restores MeowKit-managed components.
 4. **Uninstall MeowKit** — removes the managed miner and service.
 5. **Exit** — leaves the system unchanged.
 
-For a first installation, choose the recommended option unless you have a reason to tune the limits. The default CPU allocation is 75%; the default huge-page budget is 75% of the memory left after the safety reserves described below.
+For a first installation, choose the recommended option unless you have a reason to tune the limits. The recommended baseline CPU allocation is 75%; the default huge-page budget is 75% of memory remaining after host and running-guest reserves. The default adaptive profile reduces the miner's selected thread count by 50% whenever at least one Proxmox VM or LXC container is running. The scheduler checks guest state every 15 seconds.
 
 On the example 4-vCPU VM, a 75% CPU setting works out to a three-thread miner allocation and a systemd CPU quota based on all four virtual CPUs. Actual performance depends on the host's available CPU time and other workloads.
 
@@ -104,7 +104,9 @@ During installation, MeowKit:
 - Detects available logical CPUs and calculates the miner thread count and systemd CPU quota.
 - Calculates a memory budget with a 2 GiB host reserve and Proxmox running-guest memory reservations; attempts three 1 GiB pages per NUMA node, then reserves 2 MiB pages as a fallback.
 - Loads the MSR module where supported, enables the live `msr.allow_writes` parameter when exposed, and verifies read access with a non-destructive `rdmsr` probe.
-- Creates a local-time mining schedule (default 08:00–16:00 at 8 threads, baseline allocation outside that window) and installs a systemd timer that checks it every minute.
+- Creates a local-time mining schedule (default 08:00–16:00 at 40% of the configured baseline thread count, baseline allocation outside that window) and installs a systemd timer that checks it every 15 seconds.
+- Monitors running Proxmox VMs and LXC containers. When guest state changes, MeowKit stops the miner, recalculates huge-page reservations against running guest memory, updates the XMRig configuration and systemd CPU quota, reloads systemd, then restarts and verifies the miner.
+- Applies the configured VM CPU reduction to the current scheduled/baseline thread count while any guest is running. When all guests stop, the original baseline/schedule profile is restored automatically.
 - Writes the miner configuration and creates `meowkit.service` with an explicit `--threads=N` setting, graceful SIGTERM shutdown and systemd restart recovery.
 - Enables the service and schedule timer at boot and starts the miner.
 
@@ -202,19 +204,19 @@ Repair preserves a valid installed XMRig binary, the existing worker identity an
 
 The CPU percentage determines the baseline thread count and systemd CPU quota. MeowKit passes an explicit `--threads=N` value to XMRig, so a scheduled limit is an exact thread count rather than relying on XMRig's percentage-based `max-threads-hint`. The configured quota remains the baseline ceiling; the thread count controls the daytime reduction.
 
-On Proxmox hosts with running guests, MeowKit uses a more conservative default CPU allocation unless you explicitly choose a custom value.
+The configured CPU percentage is the baseline profile and is never overwritten by VM activity. When any Proxmox VM or LXC container is running, the scheduler applies the configured VM reduction to the currently selected baseline or scheduled thread count. For example, a 50% VM reduction halves the active mining thread count. When the final guest stops, MeowKit returns to the original baseline or scheduled count.
 
 ### Time-based mining schedule
 
-The default schedule uses the machine's configured local timezone (`Europe/Dublin` by default): 8 threads from 08:00 up to (but not including) 16:00, then the detected baseline allocation for the rest of the day. A systemd timer checks the schedule every minute and applies changes automatically. The timer does not restart a healthy miner on every check; it only restarts when the selected allocation changes or when the installation/repair process explicitly requests a refresh.
+The default schedule uses the machine's configured local timezone (`Europe/Dublin` by default): 8 threads from 08:00 up to (but not including) 16:00, then the detected baseline allocation for the rest of the day. A systemd timer checks the schedule and Proxmox guest state every 15 seconds and applies changes automatically. The timer does not restart a healthy miner on every check; it only restarts when the selected allocation changes or when the installation/repair process explicitly requests a refresh.
 
-Edit `/etc/meowkit/schedule.conf` to change `DAY_START`, `DAY_END`, `DAY_THREADS`, `SCHEDULE_ENABLED` or `TIMEZONE`. For a different local timezone, use its IANA name (for example `Europe/Dublin`). The controller uses the Linux machine's configured timezone, not a separate remote Windows clock.
+Edit `/etc/meowkit/schedule.conf` to change `DAY_START`, `DAY_END`, `DAY_PERCENT`, `SCHEDULE_ENABLED` or `TIMEZONE`. Edit `/etc/meowkit/resources.conf` to change `CPU_PERCENT`, `RAM_PERCENT` or `VM_CPU_REDUCTION_PERCENT`; run `sudo ./meowkit.sh --repair` to apply manually, or let the schedule timer apply guest-state changes. For a different local timezone, use its IANA name (for example `Europe/Dublin`). The controller uses the Linux machine's configured timezone, not a separate remote Windows clock.
 
 Preview the next/current selection with `sudo ./meowkit.sh --schedule-dry-run`; apply the current selection immediately with `sudo ./meowkit.sh --schedule`.
 
 ### 1 GiB and 2 MiB huge pages
 
-MeowKit calculates a safe memory budget after a 2 GiB host reserve and Proxmox running-guest reservations. It attempts three 1 GiB RandomX pages per NUMA node only when the kernel exposes a writable 1 GiB pool and the full target fits inside that budget. If allocation is unsupported or incomplete, XMRig's 1 GiB option remains disabled and 2 MiB huge pages are used instead. Existing reservations are not reduced.
+MeowKit calculates a safe memory budget after a 2 GiB host reserve and Proxmox running-guest reservations. It attempts three 1 GiB RandomX pages per NUMA node only when the full target fits inside that budget, then assigns the configured percentage of remaining memory to 2 MiB pages. When guest state changes, MeowKit stops XMRig and recalculates its managed page allocation. It tracks the page counts that existed before MeowKit first managed them, so it does not intentionally reclaim those pre-existing reservations. Kernel pages still in use by another process may not be releasable; check the logs if the requested reduction cannot be applied.
 
 Some kernels only permit 1 GiB huge pages to be reserved at boot. MeowKit does not automatically alter GRUB/kernel command-line settings or reboot; in those environments it falls back to 2 MiB pages. For a small VM, leave enough RAM for the operating system and any other workloads.
 
