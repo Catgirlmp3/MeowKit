@@ -33,39 +33,54 @@ fi
 SAFE_MB=$((TOTAL_MB-HOST_RESERVE_MB-GUEST_MB)); ((SAFE_MB>0)) || SAFE_MB=0
 NODES=$(python3 -c 's=open("/sys/devices/system/node/online").read().strip(); print(sum((int(y.split("-")[1])-int(y.split("-")[0])+1) if "-" in y else 1 for y in s.split(",") if y))' 2>/dev/null || echo 1)
 [[ $NODES =~ ^[1-9][0-9]*$ ]] || NODES=1
-TARGET1=$((NODES*3)); ACTUAL1=0; ONE_GB=0
-# Try 3 x 1 GiB RandomX pages per NUMA node only when the entire reservation
-# fits inside the remaining memory budget and the kernel exposes the pool.
-if [[ -r $HP1 && -w $HP1 ]] && (( SAFE_MB >= TARGET1*1024 )); then
-  ACTUAL1=$(cat "$HP1" 2>/dev/null || echo 0)
-  [[ $ACTUAL1 =~ ^[0-9]+$ ]] || ACTUAL1=0
-  if (( ACTUAL1 < TARGET1 )); then
-    printf '%s\n' "$TARGET1" > "$HP1" 2>/dev/null || true
-    ACTUAL1=$(cat "$HP1" 2>/dev/null || echo 0)
-    [[ $ACTUAL1 =~ ^[0-9]+$ ]] || ACTUAL1=0
-  fi
-  (( ACTUAL1 >= TARGET1 && ACTUAL1*1024 <= SAFE_MB )) && ONE_GB=1
-elif [[ -r $HP1 ]]; then
-  ACTUAL1=$(cat "$HP1" 2>/dev/null || echo 0)
+
+ACTUAL1=0; ACTUAL2=0
+[[ -r $HP1 ]] && ACTUAL1=$(cat "$HP1" 2>/dev/null || echo 0)
+[[ -r $HP2 ]] && ACTUAL2=$(cat "$HP2" 2>/dev/null || echo 0)
+[[ $ACTUAL1 =~ ^[0-9]+$ ]] || ACTUAL1=0
+[[ $ACTUAL2 =~ ^[0-9]+$ ]] || ACTUAL2=0
+
+# Remember the huge pages that existed before MeowKit first managed them.
+# This lets later VM transitions resize only MeowKit's allocation and leave
+# pages reserved by other applications untouched.
+BASELINE1=$ACTUAL1; BASELINE2=$ACTUAL2
+if [[ -r $STATE ]]; then
+  saved1=$(sed -n 's/^BASELINE_ONE_GB_PAGES=//p' "$STATE" | head -n1)
+  saved2=$(sed -n 's/^BASELINE_TWO_MB_PAGES=//p' "$STATE" | head -n1)
+  [[ $saved1 =~ ^[0-9]+$ ]] && BASELINE1=$saved1
+  [[ $saved2 =~ ^[0-9]+$ ]] && BASELINE2=$saved2
+fi
+BASELINE_MB=$((BASELINE1*1024 + BASELINE2*2))
+AVAILABLE_MB=$((SAFE_MB-BASELINE_MB)); ((AVAILABLE_MB>0)) || AVAILABLE_MB=0
+
+TARGET1=0
+(( AVAILABLE_MB >= NODES*3*1024 )) && TARGET1=$((NODES*3))
+DESIRED1=$((BASELINE1+TARGET1))
+if [[ -w $HP1 ]] && (( ACTUAL1 != DESIRED1 )); then
+  printf '%s\n' "$DESIRED1" > "$HP1" 2>/dev/null || log "Could not resize 1 GiB page pool to $DESIRED1 (pages may still be in use)."
+  ACTUAL1=$(cat "$HP1" 2>/dev/null || echo "$ACTUAL1")
   [[ $ACTUAL1 =~ ^[0-9]+$ ]] || ACTUAL1=0
 fi
-RESERVED1=$((ACTUAL1*1024))
-REMAIN_MB=$((SAFE_MB-RESERVED1)); ((REMAIN_MB>0)) || REMAIN_MB=0
-BUDGET2=$((REMAIN_MB*RAM_PERCENT/100)); TARGET2=$((BUDGET2/2)); ACTUAL2=0
-if [[ -r $HP2 && -w $HP2 ]]; then
-  ACTUAL2=$(cat "$HP2" 2>/dev/null || echo 0); [[ $ACTUAL2 =~ ^[0-9]+$ ]] || ACTUAL2=0
-  if (( TARGET2 > ACTUAL2 )); then
-    printf '%s\n' "$TARGET2" > "$HP2" 2>/dev/null || true
-    ACTUAL2=$(cat "$HP2" 2>/dev/null || echo 0); [[ $ACTUAL2 =~ ^[0-9]+$ ]] || ACTUAL2=0
-  fi
+ONE_GB=0
+(( ACTUAL1 >= NODES*3 )) && ONE_GB=1
+
+REMAIN_MB=$((SAFE_MB-ACTUAL1*1024-BASELINE2*2)); ((REMAIN_MB>0)) || REMAIN_MB=0
+BUDGET2=$((REMAIN_MB*RAM_PERCENT/100)); TARGET2=$((BUDGET2/2))
+DESIRED2=$((BASELINE2+TARGET2))
+if [[ -w $HP2 ]] && (( ACTUAL2 != DESIRED2 )); then
+  printf '%s\n' "$DESIRED2" > "$HP2" 2>/dev/null || log "Could not resize 2 MiB page pool to $DESIRED2 (pages may still be in use)."
+  ACTUAL2=$(cat "$HP2" 2>/dev/null || echo "$ACTUAL2")
+  [[ $ACTUAL2 =~ ^[0-9]+$ ]] || ACTUAL2=0
 else
-  log "2 MiB page pool unavailable."
+  log "2 MiB page pool unavailable or read-only."
 fi
 mkdir -p "$D"
 tmp=$(mktemp "$D/.hugepages.XXXXXX") || exit 0
 {
   printf 'RAM_PERCENT=%s\n' "$RAM_PERCENT"
   printf 'HOST_RESERVE_MB=%s\n' "$HOST_RESERVE_MB"
+  printf 'BASELINE_ONE_GB_PAGES=%s\n' "$BASELINE1"
+  printf 'BASELINE_TWO_MB_PAGES=%s\n' "$BASELINE2"
   printf 'ONE_GB_PAGES=%s\n' "$ONE_GB"
   printf 'NUMA_NODES=%s\n' "$NODES"
   printf 'GUEST_RESERVE_MB=%s\n' "$GUEST_MB"
