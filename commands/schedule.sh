@@ -23,14 +23,28 @@ for t in "$DAY_START" "$DAY_END"; do [[ $t =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]
 for n in "$DAY_THREADS" "$BASE_THREADS" "$TOTAL_THREADS"; do [[ $n =~ ^[1-9][0-9]*$ ]] || fail "Invalid thread count: $n"; done
 [[ -e /usr/share/zoneinfo/$TIMEZONE ]] || fail "Unknown timezone: $TIMEZONE"
 (( BASE_THREADS > TOTAL_THREADS )) && BASE_THREADS=$TOTAL_THREADS
-(( DAY_THREADS > BASE_THREADS )) && DAY_DAY_THREADS=$((BASE_THREADS * DAY_PERCENT / 100))
+[[ $DAY_PERCENT =~ ^[0-9]+$ ]] && (( DAY_PERCENT >= 1 && DAY_PERCENT <= 100 )) || fail "DAY_PERCENT must be 1-100."
+time_min(){ local h=${1%%:*} m=${1##*:}; echo $((10#$h*60+10#$m)); }
+NOW=${MEOWKIT_SCHEDULE_NOW:-$(TZ="$TIMEZONE" date +%H:%M)}
+[[ $NOW =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || fail "Invalid current time: $NOW"
+if [[ -n ${MEOWKIT_SCHEDULE_NOW:-} && $ACTION != --dry-run ]]; then fail "MEOWKIT_SCHEDULE_NOW is test-only."; fi
+S=$(time_min "$DAY_START"); E=$(time_min "$DAY_END"); N=$(time_min "$NOW")
+ACTIVE=0
+if [[ $SCHEDULE_ENABLED == 1 ]]; then
+  if (( S < E )); then
+    if (( N >= S && N < E )); then ACTIVE=1; fi
+  else
+    if (( N >= S || N < E )); then ACTIVE=1; fi
+  fi
+fi
+DAY_THREADS=$((BASE_THREADS * DAY_PERCENT / 100))
 (( DAY_THREADS > 0 )) || DAY_THREADS=1
 THREADS=$BASE_THREADS
-(( ACTIVE )) && THREADS=$DAY_THREADS
+if (( ACTIVE )); then THREADS=$DAY_THREADS; fi
 
 # Detect both QEMU VMs and LXC containers. The signature changes on guest
-# start/stop (and captures IDs), while hugepages.sh independently accounts
-# for each running guest's configured RAM.
+# start/stop (and captures IDs); hugepages.sh independently accounts for
+# each running guest's configured RAM.
 VM_SIGNATURE=''
 if command -v qm >/dev/null 2>&1; then
   VM_SIGNATURE+=$(qm list 2>/dev/null | awk 'NR>1 && $3=="running"{print "vm:"$1}' | sort)
@@ -40,9 +54,9 @@ if command -v pct >/dev/null 2>&1; then
 fi
 VM_SIGNATURE=${VM_SIGNATURE:-none}
 VM_ACTIVE=0
-[[ $VM_SIGNATURE != none ]] && VM_ACTIVE=1
+if [[ $VM_SIGNATURE != none ]]; then VM_ACTIVE=1; fi
 VM_REDUCTION=0
-if (( VM_ACTIVE )) && (( VM_CPU_REDUCTION_PERCENT > 0 )); then
+if (( VM_ACTIVE && VM_CPU_REDUCTION_PERCENT > 0 )); then
   VM_REDUCTION=$VM_CPU_REDUCTION_PERCENT
   THREADS=$((THREADS * (100 - VM_REDUCTION) / 100))
   (( THREADS > 0 )) || THREADS=1
@@ -51,7 +65,7 @@ CPU_QUOTA=$((THREADS * 100))
 STATE_FILE=$D/vm-state
 OLD_VM_SIGNATURE=$(cat "$STATE_FILE" 2>/dev/null || true)
 VM_CHANGED=0
-[[ $VM_SIGNATURE != "$OLD_VM_SIGNATURE" ]] && VM_CHANGED=1
+if [[ $VM_SIGNATURE != "$OLD_VM_SIGNATURE" ]]; then VM_CHANGED=1; fi
 HINT=$(((THREADS*100+TOTAL_THREADS-1)/TOTAL_THREADS))
 (( HINT > 100 )) && HINT=100
 CURRENT=$(sed -n 's/^MEOWKIT_THREADS=//p' "$ENV" | head -n1)
