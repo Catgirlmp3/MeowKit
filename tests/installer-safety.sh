@@ -5,6 +5,10 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Tor must be both ordered before the miner and verified before ExecStart.
 grep -Fq 'After=network-online.target ${TOR_UNIT}' "$ROOT/lib/miner.sh"
 grep -Fq 'ExecStartPre=/usr/local/sbin/meowkit-tor-check' "$ROOT/lib/miner.sh"
+# Runtime Tor preflight must retry slow circuits and have enough systemd startup time.
+grep -Fq 'max_attempts=8' "$ROOT/lib/miner.sh"
+grep -Fq 'sleep 5' "$ROOT/lib/miner.sh"
+grep -Fq 'TimeoutStartSec=210' "$ROOT/lib/miner.sh"
 
 # The generated service must define the exact variable used in ExecStart,
 # and only remove systemd's conventional /dev/null mask (not arbitrary links).
