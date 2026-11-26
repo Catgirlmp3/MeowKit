@@ -102,8 +102,6 @@ EOFJSON
   chmod 640 "$tmp"
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
-  # Re-run after config.json exists so the helper can set XMRig's 1 GiB page flag.
-  [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
   # Keep the runtime environment variable and the generated ExecStart
   # argument in sync. Do not reference an unset MEOWKIT_THREADS under set -u.
   [[ ${THREADS:-} =~ ^[1-9][0-9]*$ ]] || fail 'Detected miner thread count is missing or invalid.'
@@ -123,8 +121,6 @@ EOFJSON
     HP_WRITE_PATHS=${HP_WRITE_PATHS% }
   fi
 
-  local hp_pre=''
-  if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
 
   # A previous failed/manual install may have left systemd's standard
   # mask symlink here. Remove only that exact /dev/null mask; never follow or
@@ -143,14 +139,13 @@ EOFJSON
 [Unit]
 Description=MeowKit Background Workload
 Wants=network-online.target ${TOR_UNIT}
-After=network-online.target ${TOR_UNIT}
+After=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-# Allow the Tor preflight's bounded retry window plus huge-page preparation.
-TimeoutStartSec=210
-${hp_pre}
+# Tor preflight (195s worst case) plus bounded huge-page preparation (104s worst case).
+TimeoutStartSec=330
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
 ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=\${MEOWKIT_THREADS}
@@ -173,12 +168,16 @@ WantedBy=multi-user.target
 EOFUNIT
   chmod 644 "$MEOWKIT_SERVICE"
   systemd-analyze verify "$MEOWKIT_SERVICE" || fail 'systemd rejected the generated service unit.'
+  # Calculate and persist the final schedule/guest-aware allocation before the
+  # first miner start. This avoids starting at baseline and immediately restarting.
+  if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
+    /usr/local/sbin/meowkit-resource-watch --prepare || fail 'Could not prepare the initial adaptive resource profile; miner was not started.'
+  fi
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
   info 'Starting the MeowKit systemd service.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
   if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
-    /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
     systemctl enable --now meowkit-resource-watch.timer >/dev/null 2>&1 || warn 'Could not enable the adaptive resource timer.'
   fi
 }
