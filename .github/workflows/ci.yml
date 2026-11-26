@@ -55,10 +55,7 @@ jobs:
       - name: Apply and verify zero-donation source patch
         run: |
           set -euo pipefail
-          sed -i \
-            -e 's/kDefaultDonateLevel = 1;/kDefaultDonateLevel = 0;/' \
-            -e 's/kMinimumDonateLevel = 1;/kMinimumDonateLevel = 0;/' \
-            xmrig-src/src/donate.h
+          (cd xmrig-src && git apply ../vendor/xmrig/zero-donation.patch)
           grep -Fq 'kDefaultDonateLevel = 0;' xmrig-src/src/donate.h
           grep -Fq 'kMinimumDonateLevel = 0;' xmrig-src/src/donate.h
       - name: Compile XMRig
