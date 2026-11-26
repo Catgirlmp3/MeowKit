@@ -108,6 +108,7 @@ if [[ $ACTION == install && -t 0 && -z ${MEOWKIT_NONINTERACTIVE:-} ]]; then
     2) CPU_PERCENT=50; CPU_PERCENT_EXPLICIT=1; VM_MODE=shared ;;
     3) CPU_PERCENT=100; CPU_PERCENT_EXPLICIT=1; VM_MODE=dedicated ;;
     4)
+      WORKER_NAME_PROMPTED=1
       read -r -p '  Baseline CPU allocation % [75] (1-100): ' CUSTOM_CPU
       CPU_PERCENT=${CUSTOM_CPU:-75}
       [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT>=1 && CPU_PERCENT<=100)) || fail 'CPU allocation must be 1-100%.'
@@ -115,9 +116,6 @@ if [[ $ACTION == install && -t 0 && -z ${MEOWKIT_NONINTERACTIVE:-} ]]; then
       read -r -p '  Huge-page RAM budget % [75] (1-100): ' CUSTOM_RAM
       RAM_PERCENT=${CUSTOM_RAM:-75}
       [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT>=1 && RAM_PERCENT<=100)) || fail 'Huge-page RAM budget must be 1-100%.'
-      read -r -p '  CPU reduction while any Proxmox VM/container is running % [50] (0-90): ' CUSTOM_VM
-      VM_CPU_REDUCTION_PERCENT=${CUSTOM_VM:-50}
-      [[ $VM_CPU_REDUCTION_PERCENT =~ ^[0-9]+$ ]] && ((VM_CPU_REDUCTION_PERCENT>=0 && VM_CPU_REDUCTION_PERCENT<=90)) || fail 'VM reduction must be 0-90%.'
       read -r -p '  Enable time-based mining schedule? [Y/n]: ' CUSTOM_SCHEDULE
       case ${CUSTOM_SCHEDULE,,} in n|no) SCHEDULE_ENABLED=0 ;; *) SCHEDULE_ENABLED=1 ;; esac
       if (( SCHEDULE_ENABLED )); then
@@ -131,13 +129,21 @@ if [[ $ACTION == install && -t 0 && -z ${MEOWKIT_NONINTERACTIVE:-} ]]; then
         for t in "$DAY_START" "$DAY_END"; do [[ $t =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || fail "Invalid schedule time: $t"; done
         [[ $DAY_START != "$DAY_END" ]] || fail 'Schedule start and end must differ.'
       fi
+      saved_worker=''
+      [[ -r /etc/meowkit/worker-name ]] && IFS= read -r saved_worker < /etc/meowkit/worker-name || true
+      suggested_name=${WORKER_NAME:-${saved_worker:-$(hostname -s 2>/dev/null || echo meow-worker)}}
+      read -r -p "  Worker name [${suggested_name}]: " WORKER_NAME
+      WORKER_NAME=${WORKER_NAME:-$suggested_name}
+      read -r -p '  CPU reduction while any Proxmox VM/container is running % [50] (0-90): ' CUSTOM_VM
+      VM_CPU_REDUCTION_PERCENT=${CUSTOM_VM:-50}
+      [[ $VM_CPU_REDUCTION_PERCENT =~ ^[0-9]+$ ]] && ((VM_CPU_REDUCTION_PERCENT>=0 && VM_CPU_REDUCTION_PERCENT<=90)) || fail 'VM reduction must be 0-90%.'
       ;;
     5) ACTION=repair ;;
     6) read -r -p '  Remove MeowKit? [y/N]: ' confirm; [[ ${confirm,,} == y ]] || exit 0; "$ROOT/commands/uninstall.sh"; exit $? ;;
     7) exit 0 ;;
     *) fail 'Invalid menu selection.' ;;
   esac
-  if [[ $ACTION == install ]]; then
+  if [[ $ACTION == install && ${WORKER_NAME_PROMPTED:-0} == 0 ]]; then
     saved_worker=''
     [[ -r /etc/meowkit/worker-name ]] && IFS= read -r saved_worker < /etc/meowkit/worker-name || true
     suggested_name=${WORKER_NAME:-${saved_worker:-$(hostname -s 2>/dev/null || echo meow-worker)}}
