@@ -68,6 +68,7 @@ if [[ $EUID -eq 0 ]]; then
 else
   out=$(sudo env "MEOWKIT_DIR=$D" "MEOWKIT_SYSTEMD_DIR=$TMP/systemd" "MEOWKIT_SYSTEMCTL_LOG=$TMP/systemctl.log" "PATH=$TMP/bin:$PATH" bash "$ROOT/commands/resource-watch.sh" --prepare)
 fi
+if [[ $EUID -ne 0 ]]; then sudo chown -R "$(id -u):$(id -g)" "$TMP"; fi
 grep -Fq 'Prepared initial profile: 8 threads' <<<"$out"
 grep -Fqx 'MEOWKIT_THREADS=8' "$D/runtime.env"
 grep -Fqx 'THREADS=8' "$D/resource-state"
