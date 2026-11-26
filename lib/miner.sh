@@ -122,6 +122,9 @@ EOFJSON
   fi
 
 
+  local hp_pre=''
+  if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
+
   # A previous failed/manual install may have left systemd's standard
   # mask symlink here. Remove only that exact /dev/null mask; never follow or
   # overwrite an unrelated symlink or non-regular path.
@@ -146,6 +149,7 @@ StartLimitIntervalSec=0
 Type=simple
 # Tor preflight (195s worst case) plus bounded huge-page preparation (104s worst case).
 TimeoutStartSec=330
+${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
 ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=\${MEOWKIT_THREADS}
