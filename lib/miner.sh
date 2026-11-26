@@ -110,12 +110,13 @@ EOFJSON
 [Unit]
 Description=MeowKit Background Workload
 Wants=network-online.target ${TOR_UNIT}
-After=network-online.target
+After=network-online.target ${TOR_UNIT}
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ${hp_pre}
+ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
 ExecStart=${MEOWKIT_BIN} --config=${MEOWKIT_DIR}/config.json --threads=${MEOWKIT_THREADS}
 Restart=always
