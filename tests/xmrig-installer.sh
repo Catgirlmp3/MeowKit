@@ -62,7 +62,21 @@ install_xmrig
 [[ ${#CURL_TRACE[@]} -eq 0 ]]
 rm -rf "$WORKDIR"
 
-# Case 2: if the bundle is absent, the Tor copy is tried before normal HTTPS.
+# Case 2: repair preserves only the exact bundled build, not a stock binary
+# that merely reports the same XMRig version.
+setup_case repair
+mkdir -p "$ROOT/vendor/xmrig/linux-x86_64"
+cp "$FIXTURE/meowkit-xmrig" "$ROOT/vendor/xmrig/linux-x86_64/meowkit-xmrig"
+cp "$FIXTURE/SHA256SUMS" "$ROOT/vendor/xmrig/linux-x86_64/SHA256SUMS"
+printf '%s\\n' '#!/usr/bin/env sh' "echo 'XMRig 6.26.0'" > "$MEOWKIT_BIN"
+chmod 755 "$MEOWKIT_BIN"
+REPAIR=1
+install_xmrig
+[[ $(sha256sum "$MEOWKIT_BIN" | awk '{print $1}') == $(sha256sum "$FIXTURE/meowkit-xmrig" | awk '{print $1}') ]]
+[[ ${#CURL_TRACE[@]} -eq 0 ]]
+rm -rf "$WORKDIR"
+
+# Case 3: if the bundle is absent, the Tor copy is tried before normal HTTPS.
 setup_case tor
 CURL_MODE=tor
 install_xmrig
@@ -70,7 +84,7 @@ install_xmrig
 [[ ${CURL_TRACE[*]} == 'tor tor' ]]
 rm -rf "$WORKDIR"
 
-# Case 3: if Tor fails, normal HTTPS is the final transport fallback.
+# Case 4: if Tor fails, normal HTTPS is the final transport fallback.
 setup_case normal
 CURL_MODE=normal
 install_xmrig
