@@ -86,6 +86,8 @@ EOFJSON
   chmod 640 "$tmp"
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
+  # Re-run after config.json exists so the helper can set XMRig's 1 GiB page flag.
+  [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
   printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$MEOWKIT_DIR/runtime.env"
   chmod 640 "$MEOWKIT_DIR/runtime.env"
   write_tor_check
