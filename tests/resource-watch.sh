@@ -42,3 +42,25 @@ grep -Fq 'Running guests: none' <<<"$out"
 grep -Fq 'VM reduction: 0%' <<<"$out"
 grep -Fq 'Selected threads: 6' <<<"$out"
 printf 'PASS guest stopped -> scheduled allocation restored to 6/16 threads\n'
+
+# Initial preparation must persist the final profile without touching service state.
+mkdir -p "$TMP/systemd"
+cat > "$TMP/bin/systemctl" <<'EOFSYSTEMCTL'
+#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$MEOWKIT_SYSTEMCTL_LOG"
+case "$1" in
+  daemon-reload) exit 0 ;;
+  is-active) exit 1 ;;
+  *) exit 0 ;;
+esac
+EOFSYSTEMCTL
+chmod +x "$TMP/bin/systemctl"
+rm -f "$D/runtime.env" "$D/resource-state"
+: > "$TMP/systemctl.log"
+out=$(MEOWKIT_DIR="$D" MEOWKIT_SYSTEMD_DIR="$TMP/systemd" MEOWKIT_SYSTEMCTL_LOG="$TMP/systemctl.log" PATH="$TMP/bin:$PATH" MEOWKIT_RESOURCE_NOW=12:00 bash "$ROOT/commands/resource-watch.sh" --prepare)
+grep -Fq 'Prepared initial profile: 3 threads' <<<"$out"
+grep -Fqx 'MEOWKIT_THREADS=3' "$D/runtime.env"
+grep -Fqx 'THREADS=3' "$D/resource-state"
+grep -Fqx 'CPUQuota=300%' "$TMP/systemd/meowkit.service.d/10-meowkit-resource-profile.conf"
+! grep -Eq '^(start|stop|restart) ' "$TMP/systemctl.log"
+printf 'PASS initial preparation persists final guest/schedule profile without service restart\\n'
