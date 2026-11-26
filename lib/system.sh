@@ -76,7 +76,6 @@ configure_resource_manager() {
 [Unit]
 Description=MeowKit adaptive CPU and huge-page resource manager
 After=meowkit.service
-Wants=meowkit.service
 
 [Service]
 Type=oneshot
