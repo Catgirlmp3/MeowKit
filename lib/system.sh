@@ -80,7 +80,7 @@ After=meowkit.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/meowkit-resource-watch --apply
-TimeoutStartSec=180
+TimeoutStartSec=560
 Nice=10
 EOFSVC
   cat > /etc/systemd/system/meowkit-resource-watch.timer <<'EOFTIMER'

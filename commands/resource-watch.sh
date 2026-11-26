@@ -5,7 +5,7 @@ PROFILE=$D/resource-profile.conf
 RUNTIME=$D/runtime.env
 SERVICE=meowkit.service
 ACTION=${1:---apply}
-case "$ACTION" in --apply|--dry-run) ;; *) echo "Usage: $0 [--apply|--dry-run]" >&2; exit 2 ;; esac
+case "$ACTION" in --apply|--prepare|--dry-run) ;; *) echo "Usage: $0 [--apply|--prepare|--dry-run]" >&2; exit 2 ;; esac
 [[ -r $PROFILE ]] || { echo "[MeowKit resource] Missing $PROFILE" >&2; exit 1; }
 # Root-owned profile written by the installer.
 source "$PROFILE"
@@ -60,20 +60,21 @@ CPU_QUOTA=$((THREADS * 100))
 CURRENT=$(sed -n 's/^MEOWKIT_THREADS=//p' "$RUNTIME" 2>/dev/null | head -n1 || true)
 STATE=$D/resource-state
 OLD_SIGNATURE=$(sed -n 's/^VM_SIGNATURE=//p' "$STATE" 2>/dev/null | head -n1 || true)
-DROPIN=/etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
+SYSTEMD_DIR=${MEOWKIT_SYSTEMD_DIR:-/etc/systemd/system}
+DROPIN=$SYSTEMD_DIR/meowkit.service.d/10-meowkit-resource-profile.conf
 if [[ $ACTION == --dry-run ]]; then
   printf 'Time: %s (%s)\nSchedule active: %s (%s-%s at %s%% of baseline)\nRunning guests: %s\nVM reduction: %s%%\nSelected threads: %s\nCPUQuota: %s%%\nCurrent threads: %s\n' "$NOW" "$TIMEZONE" "$SCHEDULE_ACTIVE" "$DAY_START" "$DAY_END" "$DAY_PERCENT" "$VM_SIGNATURE" "$VM_REDUCTION" "$THREADS" "$CPU_QUOTA" "${CURRENT:-unknown}"
   exit 0
 fi
 [[ $EUID -eq 0 ]] || { echo 'Run as root.' >&2; exit 1; }
 # A timer tick must never resurrect a miner that an operator intentionally stopped.
-if ! systemctl is-active --quiet "$SERVICE"; then
+if [[ $ACTION == --apply ]] && ! systemctl is-active --quiet "$SERVICE"; then
   echo '[MeowKit resource] Miner is not active; leaving it stopped.'
   exit 0
 fi
 command -v flock >/dev/null || { echo 'flock is required.' >&2; exit 1; }
 exec 9>"$D/.resource-watch.lock"; flock -n 9 || exit 0
-if [[ $CURRENT == "$THREADS" && $OLD_SIGNATURE == "$VM_SIGNATURE" && -f $DROPIN ]] &&
+if [[ $ACTION == --apply && $CURRENT == "$THREADS" && $OLD_SIGNATURE == "$VM_SIGNATURE" && -f $DROPIN ]] &&
    grep -qxF "CPUQuota=${CPU_QUOTA}%" "$DROPIN" && systemctl is-active --quiet "$SERVICE"; then
   exit 0
 fi
@@ -94,8 +95,8 @@ restore_previous() {
   systemctl restart "$SERVICE" || true
 }
 
-echo "[MeowKit resource] Applying $THREADS threads; VM signature=$VM_SIGNATURE; CPUQuota=${CPU_QUOTA}%."
-systemctl stop "$SERVICE"
+echo "[MeowKit resource] Preparing $THREADS threads; VM signature=$VM_SIGNATURE; CPUQuota=${CPU_QUOTA}%."
+if [[ $ACTION == --apply ]]; then systemctl stop "$SERVICE"; fi
 printf 'MEOWKIT_THREADS=%s\n' "$THREADS" > "$TMP/runtime.new"
 chmod 640 "$TMP/runtime.new"
 install -m 0644 "$TMP/runtime.new" "$RUNTIME"
@@ -114,26 +115,38 @@ if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then
 fi
 if ! systemctl daemon-reload; then
   echo '[MeowKit resource] systemd daemon-reload failed; restoring previous profile.' >&2
-  restore_previous
+  if [[ $ACTION == --apply ]]; then restore_previous; else
+    [[ -f "$TMP/runtime.old" ]] && cp -a "$TMP/runtime.old" "$RUNTIME" || rm -f "$RUNTIME"
+    [[ -f "$TMP/dropin.old" ]] && cp -a "$TMP/dropin.old" "$DROPIN" || rm -f "$DROPIN"
+    [[ -f "$TMP/hugepages.old" ]] && cp -a "$TMP/hugepages.old" "$D/hugepages.conf" || rm -f "$D/hugepages.conf"
+    systemctl daemon-reload || true
+  fi
   exit 1
 fi
 
+if [[ $ACTION == --prepare ]]; then
+  printf 'VM_SIGNATURE=%s\nTHREADS=%s\nCPU_QUOTA=%s\n' "$VM_SIGNATURE" "$THREADS" "$CPU_QUOTA" > "$STATE"
+  chmod 600 "$STATE"
+  echo "[MeowKit resource] Prepared initial profile: $THREADS threads; miner has not been started."
+  exit 0
+fi
+
 restart_and_verify(){
-  local attempt pid cmd tick
-  for attempt in 1 2 3; do
-    systemctl restart "$SERVICE" || true
-    for ((tick=0; tick<45; tick++)); do
-      if systemctl is-active --quiet "$SERVICE"; then
-        pid=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
-        if [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]]; then
-          cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
-          if [[ $cmd == *"--threads=$THREADS"* ]]; then return 0; fi
-        fi
+  local pid cmd tick
+  # One restart request only. systemd owns automatic retries (Restart=always);
+  # issuing repeated synchronous restart jobs can exceed the oneshot timeout.
+  systemctl restart "$SERVICE" || true
+  for ((tick=0; tick<60; tick++)); do
+    if systemctl is-active --quiet "$SERVICE"; then
+      pid=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
+      if [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]]; then
+        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+        if [[ $cmd == *"--threads=$THREADS"* ]]; then return 0; fi
       fi
-      sleep 1
-    done
-    journalctl -u "$SERVICE" -n 20 --no-pager 2>/dev/null || true
+    fi
+    sleep 1
   done
+  journalctl -u "$SERVICE" -n 20 --no-pager 2>/dev/null || true
   return 1
 }
 if restart_and_verify; then

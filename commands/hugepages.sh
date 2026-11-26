@@ -102,7 +102,11 @@ DESIRED2=$BASELINE2
 
 if [[ -w $HP2 ]] && (( ACTUAL2 < DESIRED2 )); then
   if command -v timeout >/dev/null 2>&1; then
+    BATCH=0
+    BATCHES=$(((DESIRED2 - ACTUAL2 + 63) / 64))
     while (( ACTUAL2 < DESIRED2 )); do
+      BATCH=$((BATCH + 1))
+      log "Allocating 2 MiB huge pages: batch $BATCH/$BATCHES ($ACTUAL2/$DESIRED2 pages currently reserved)."
       NEXT2=$((ACTUAL2 + 64))
       (( NEXT2 > DESIRED2 )) && NEXT2=$DESIRED2
       if ! timeout --signal=TERM --kill-after=2s 8s bash -c 'printf "%s\n" "$2" > "$1"' _ "$HP2" "$NEXT2"; then

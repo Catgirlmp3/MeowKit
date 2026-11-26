@@ -42,9 +42,27 @@ install_xmrig() {
 write_tor_check() {
   cat > /usr/local/sbin/meowkit-tor-check <<'EOFCHK'
 #!/bin/sh
-set -eu
-response=$(/usr/bin/curl --connect-timeout 8 --max-time 15 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip)
-printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' || { echo '[MeowKit] Tor pre-start check failed: proxy response did not confirm a Tor exit node.' >&2; exit 1; }
+set -u
+attempt=1
+max_attempts=8
+last_error='Tor circuit did not become ready.'
+while [ "$attempt" -le "$max_attempts" ]; do
+  if response=$(/usr/bin/curl --connect-timeout 8 --max-time 20 --silent --show-error --fail --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>&1); then
+    if printf '%s' "$response" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("IsTor") is True else 1)' 2>/dev/null; then
+      exit 0
+    fi
+    last_error='SOCKS proxy responded, but the response did not confirm a Tor exit node.'
+  else
+    last_error=$response
+  fi
+  if [ "$attempt" -lt "$max_attempts" ]; then
+    echo "[MeowKit] Tor is not ready (attempt $attempt/$max_attempts); retrying in 5 seconds." >&2
+    sleep 5
+  fi
+  attempt=$((attempt + 1))
+done
+echo "[MeowKit] Tor pre-start check failed after $max_attempts attempts: $last_error" >&2
+exit 1
 EOFCHK
   chmod 755 /usr/local/sbin/meowkit-tor-check
 }
@@ -84,8 +102,6 @@ EOFJSON
   chmod 640 "$tmp"
   chown root:root "$tmp"
   mv -f "$tmp" "$MEOWKIT_DIR/config.json"
-  # Re-run after config.json exists so the helper can set XMRig's 1 GiB page flag.
-  [[ -x /usr/local/sbin/meowkit-hugepages ]] && /usr/local/sbin/meowkit-hugepages || true
   # Keep the runtime environment variable and the generated ExecStart
   # argument in sync. Do not reference an unset MEOWKIT_THREADS under set -u.
   [[ ${THREADS:-} =~ ^[1-9][0-9]*$ ]] || fail 'Detected miner thread count is missing or invalid.'
@@ -104,6 +120,7 @@ EOFJSON
     printf -v HP_WRITE_PATHS '%s ' "${hp_write_paths[@]}"
     HP_WRITE_PATHS=${HP_WRITE_PATHS% }
   fi
+
 
   local hp_pre=''
   if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then hp_pre='ExecStartPre=-/usr/local/sbin/meowkit-hugepages'; else warn 'Huge-page helper unavailable; service will use kernel defaults.'; fi
@@ -125,11 +142,13 @@ EOFJSON
 [Unit]
 Description=MeowKit Background Workload
 Wants=network-online.target ${TOR_UNIT}
-After=network-online.target ${TOR_UNIT}
+After=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+# Tor preflight (195s worst case) plus bounded huge-page preparation (up to 210s worst case).
+TimeoutStartSec=480
 ${hp_pre}
 ExecStartPre=/usr/local/sbin/meowkit-tor-check
 EnvironmentFile=${MEOWKIT_DIR}/runtime.env
@@ -153,12 +172,16 @@ WantedBy=multi-user.target
 EOFUNIT
   chmod 644 "$MEOWKIT_SERVICE"
   systemd-analyze verify "$MEOWKIT_SERVICE" || fail 'systemd rejected the generated service unit.'
+  # Calculate and persist the final schedule/guest-aware allocation before the
+  # first miner start. This avoids starting at baseline and immediately restarting.
+  if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
+    /usr/local/sbin/meowkit-resource-watch --prepare || fail 'Could not prepare the initial adaptive resource profile; miner was not started.'
+  fi
   systemctl daemon-reload || fail 'systemd could not reload unit files.'
   systemctl enable meowkit.service >/dev/null 2>&1 || fail 'Could not enable meowkit.service at boot.'
   info 'Starting the MeowKit systemd service.'
   systemctl restart meowkit.service || info 'Service restart did not complete immediately; inspect journalctl -u meowkit.service.'
   if [[ -x /usr/local/sbin/meowkit-resource-watch ]]; then
-    /usr/local/sbin/meowkit-resource-watch --apply || warn 'Initial adaptive resource profile could not be applied; the 15-second timer will retry.'
     systemctl enable --now meowkit-resource-watch.timer >/dev/null 2>&1 || warn 'Could not enable the adaptive resource timer.'
   fi
 }
