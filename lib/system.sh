@@ -16,8 +16,8 @@ detect_resources() {
   RAM_PERCENT=${RAM_PERCENT:-75}
   VM_CPU_REDUCTION_PERCENT=${VM_CPU_REDUCTION_PERCENT:-50}
   DAY_PERCENT=${DAY_PERCENT:-40}
-  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT >= 10 && CPU_PERCENT <= 100)) || fail 'CPU allocation percentage must be between 10 and 100.'
-  [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 10 && RAM_PERCENT <= 90)) || fail 'Huge-page RAM percentage must be between 10 and 90.'
+  [[ $CPU_PERCENT =~ ^[0-9]+$ ]] && ((CPU_PERCENT >= 1 && CPU_PERCENT <= 100)) || fail 'CPU allocation percentage must be between 1 and 100.'
+  [[ $RAM_PERCENT =~ ^[0-9]+$ ]] && ((RAM_PERCENT >= 1 && RAM_PERCENT <= 100)) || fail 'Huge-page RAM percentage must be between 1 and 100.'
   [[ $VM_CPU_REDUCTION_PERCENT =~ ^[0-9]+$ ]] && ((VM_CPU_REDUCTION_PERCENT >= 0 && VM_CPU_REDUCTION_PERCENT <= 90)) || fail 'VM CPU reduction must be between 0 and 90%.'
   [[ $DAY_PERCENT =~ ^[0-9]+$ ]] && ((DAY_PERCENT >= 1 && DAY_PERCENT <= 100)) || fail 'Scheduled CPU allocation must be between 1 and 100%.'
 
