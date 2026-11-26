@@ -26,18 +26,24 @@ grep -Fq -- '--silent --show-error --fail --socks5-hostname' "$ROOT/lib/miner.sh
 grep -Fq '[[ $service_link == /dev/null ]]' "$ROOT/lib/miner.sh"
 grep -Fq 'Refusing to replace unexpected service symlink' "$ROOT/lib/miner.sh"
 
-# XMRig is built from a pinned upstream source revision, outside the Tor route.
-grep -Fq "XMRIG_COMMIT='b2ca72480c58d197e18c885d9fc1a0c8d517e60a'" "$ROOT/lib/miner.sh"
-grep -Fq 'git clone --quiet --depth 1 --branch "v$XMRIG_VERSION" https://github.com/xmrig/xmrig.git' "$ROOT/lib/miner.sh"
-grep -Fq 'kDefaultDonateLevel = 0;' "$ROOT/lib/miner.sh"
-grep -Fq 'kMinimumDonateLevel = 0;' "$ROOT/lib/miner.sh"
+# The CI-built, pinned XMRig binary ships with MeowKit and is validated before use.
+grep -Fq "XMRIG_VERSION='6.26.0'" "$ROOT/lib/miner.sh"
+grep -Fq "XMRIG_BUNDLE_DIR='vendor/xmrig/linux-x86_64'" "$ROOT/lib/miner.sh"
+grep -Fq 'local bundle="$ROOT/$XMRIG_BUNDLE_DIR/$XMRIG_BUNDLE_NAME"' "$ROOT/lib/miner.sh"
+grep -Fq 'verify_xmrig_candidate "$bundle" "$bundle_sums"' "$ROOT/lib/miner.sh"
+grep -Fq 'Trying the MeowKit XMRig bundle through Tor.' "$ROOT/lib/miner.sh"
+grep -Fq 'Trying the normal HTTPS download of the MeowKit XMRig bundle.' "$ROOT/lib/miner.sh"
+grep -Fq 'No stock 1%-donation binary was installed.' "$ROOT/lib/miner.sh"
 grep -Fq '"donate-level": 0' "$ROOT/lib/miner.sh"
 grep -Fq '"donate-over-proxy": 0' "$ROOT/lib/miner.sh"
+! grep -Fq 'git clone --quiet --depth 1 --branch "v$XMRIG_VERSION"' "$ROOT/lib/miner.sh"
+! grep -Fq 'build-essential cmake libuv1-dev libhwloc-dev' "$ROOT/lib/tor.sh"
+grep -Fq 'xmrig-build/xmrig-notls' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'vendor/xmrig/linux-x86_64/meowkit-xmrig' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'kDefaultDonateLevel = 0;' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'kMinimumDonateLevel = 0;' "$ROOT/.github/workflows/ci.yml"
 ! grep -Fq 'for _ in {1..18}' "$ROOT/lib/tor.sh"
 grep -Fq 'installation will not wait for Tor' "$ROOT/lib/tor.sh"
-grep -Fq 'local packages=(curl python3 tar gzip ca-certificates git build-essential cmake libuv1-dev libhwloc-dev)' "$ROOT/lib/tor.sh"
-grep -Fq 'cmake --build "$build" --parallel "$build_jobs"' "$ROOT/lib/miner.sh"
-! grep -Fq 'curl_tor --output "$asset"' "$ROOT/lib/miner.sh"
 
 # The timer must not pull the miner in, and the watcher must not resurrect it.
 ! grep -Fq 'Wants=meowkit.service' "$ROOT/lib/system.sh"
