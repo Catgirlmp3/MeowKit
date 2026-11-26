@@ -6,8 +6,8 @@ run() {
   local label=$1; shift
   if "$@"; then printf '[+] %s\n' "$label"; else printf '[!] %s failed; continuing.\n' "$label" >&2; failed=1; fi
 }
-run 'Stop and disable adaptive resource timer' systemctl disable --now meowkit-resource-watch.timer
-run 'Stop adaptive resource service' systemctl stop meowkit-resource-watch.service
+systemctl disable --now meowkit-resource-watch.timer >/dev/null 2>&1 || true
+systemctl stop meowkit-resource-watch.service >/dev/null 2>&1 || true
 run 'Stop and disable MeowKit service' systemctl disable --now meowkit.service
 run 'Remove MeowKit service and executable' rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-resource-watch.service /etc/systemd/system/meowkit-resource-watch.timer /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-resource-watch /etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
 run 'Remove MeowKit helper scripts' rm -f /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages
