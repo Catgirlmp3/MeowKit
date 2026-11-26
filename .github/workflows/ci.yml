@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/installer-safety.sh
+          bash tests/xmrig-installer.sh
       - name: Check README formatting
         run: |
           ! grep -Fq '\\n\\n' README.md
