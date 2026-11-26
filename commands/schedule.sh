@@ -128,7 +128,9 @@ fi
 if ! systemctl daemon-reload; then
   cp -a "$TMP/config.old" "$CFG"; cp -a "$TMP/runtime.old" "$ENV"
   [[ -f "$TMP/dropin.old" ]] && cp -a "$TMP/dropin.old" "$DROPIN" || rm -f "$DROPIN"
-  fail "daemon-reload failed; config and resource profile rolled back."
+  systemctl daemon-reload || true
+  systemctl start "$SERVICE" || true
+  fail "daemon-reload failed; config and resource profile rolled back; attempted to restore the previous miner."
 fi
 [[ -x /usr/local/sbin/meowkit-msr-enable ]] && /usr/local/sbin/meowkit-msr-enable || true
 restart_verify(){
