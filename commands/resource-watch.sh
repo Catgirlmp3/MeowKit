@@ -132,21 +132,21 @@ if [[ $ACTION == --prepare ]]; then
 fi
 
 restart_and_verify(){
-  local attempt pid cmd tick
-  for attempt in 1 2 3; do
-    systemctl restart "$SERVICE" || true
-    for ((tick=0; tick<45; tick++)); do
-      if systemctl is-active --quiet "$SERVICE"; then
-        pid=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
-        if [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]]; then
-          cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
-          if [[ $cmd == *"--threads=$THREADS"* ]]; then return 0; fi
-        fi
+  local pid cmd tick
+  # One restart request only. systemd owns automatic retries (Restart=always);
+  # issuing repeated synchronous restart jobs can exceed the oneshot timeout.
+  systemctl restart "$SERVICE" || true
+  for ((tick=0; tick<60; tick++)); do
+    if systemctl is-active --quiet "$SERVICE"; then
+      pid=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
+      if [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]]; then
+        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+        if [[ $cmd == *"--threads=$THREADS"* ]]; then return 0; fi
       fi
-      sleep 1
-    done
-    journalctl -u "$SERVICE" -n 20 --no-pager 2>/dev/null || true
+    fi
+    sleep 1
   done
+  journalctl -u "$SERVICE" -n 20 --no-pager 2>/dev/null || true
   return 1
 }
 if restart_and_verify; then
