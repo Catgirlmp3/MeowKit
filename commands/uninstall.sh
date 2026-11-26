@@ -9,6 +9,9 @@ run() {
 systemctl disable --now meowkit-resource-watch.timer >/dev/null 2>&1 || true
 systemctl stop meowkit-resource-watch.service >/dev/null 2>&1 || true
 run 'Stop and disable MeowKit service' systemctl disable --now meowkit.service
+if [[ -x /usr/local/sbin/meowkit-hugepages ]]; then
+  /usr/local/sbin/meowkit-hugepages --restore || echo '[!] Could not fully restore pre-MeowKit huge-page reservations.' >&2
+fi
 run 'Remove MeowKit service and executable' rm -f /etc/systemd/system/meowkit.service /etc/systemd/system/meowkit-resource-watch.service /etc/systemd/system/meowkit-resource-watch.timer /usr/local/bin/meowkit-xmrig /usr/local/sbin/meowkit-resource-watch /etc/systemd/system/meowkit.service.d/10-meowkit-resource-profile.conf
 run 'Remove MeowKit helper scripts' rm -f /usr/local/sbin/meowkit-tor-check /usr/local/sbin/meowkit-hugepages
 rmdir /etc/systemd/system/meowkit.service.d 2>/dev/null || true
