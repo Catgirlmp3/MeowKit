@@ -39,7 +39,7 @@ These are example values, not minimum requirements. Give the VM enough memory an
 
 ## 1. Prepare Ubuntu
 
-Sign in to the Ubuntu Server console, then update the package index and install Git:
+Sign in to the Ubuntu Server console, then update the package index and install Git (needed to clone MeowKit):
 
 ```bash
 sudo apt update
@@ -47,7 +47,7 @@ sudo apt upgrade -y
 sudo apt install -y git
 ```
 
-Git is needed to retrieve the repository and the pinned XMRig source. MeowKit installs its own build prerequisites, including the compiler, CMake, libuv and hwloc development headers, during setup.
+Git is needed to retrieve the MeowKit repository. The installer uses a precompiled XMRig binary bundled in the repository; it does not compile XMRig or install compiler/build dependencies on the target machine.
 
 You do not need to add manual `vm.nr_hugepages` settings to `/etc/sysctl.conf`. MeowKit manages its 2 MiB huge-page allocation.
 
@@ -112,7 +112,7 @@ During installation, MeowKit:
 
 - Installs missing prerequisites and configures Tor's local SOCKS5 listener on `127.0.0.1:9050`.
 - Installs Tor as the first APT package operation, before refreshing package indexes or installing the remaining prerequisites. It prefers already-cached Debian indexes, then refreshes and retries only if an installation fails. This avoids making an unrelated APT source authentication error block a Tor install that can already be satisfied from the Debian package cache. It then validates the Tor configuration and enables the available Tor systemd unit without waiting for a circuit. The miner performs a strict Tor identity check immediately before starting and retries through the proxy if Tor is still bootstrapping.
-- Fetches the pinned XMRig v6.26.0 source revision directly from GitHub (not through Tor), patches the source donation defaults/minimum to 0%, compiles it locally, and installs the resulting binary. Tor is still required and strictly verified for mining-pool traffic.
+- Installs the bundled MeowKit XMRig v6.26.0 binary first. If the bundle is missing or fails its SHA-256/version checks, it downloads the same MeowKit build through Tor, then retries over normal HTTPS. Every route validates the same checksum and version; it never falls back to the stock upstream binary with its 1% developer donation. Tor remains mandatory and strictly verified for mining-pool traffic.
 - Detects CPUs available to the current process (respecting VM/cgroup limits), calculates the miner thread count, and sets `CPUQuota` to 100% per miner thread.
 - Calculates 2 MiB and optional 1 GiB huge pages from the configured RAM budget, a host safety reserve, running Proxmox guest memory and the selected thread count.
 - Installs an adaptive resource timer that checks schedule and Proxmox VM/LXC state every 15 seconds. When guest state or the schedule changes, it stops XMRig, adjusts the managed huge-page reservation, writes the new thread count and systemd CPU quota, reloads systemd, restarts the miner and verifies the new process.
@@ -120,7 +120,7 @@ During installation, MeowKit:
 - Writes the miner configuration and creates `meowkit.service`.
 - Enables the service at boot and starts it.
 
-MeowKit builds XMRig locally from the pinned upstream v6.26.0 source. Its `src/donate.h` defaults and minimum are patched to 0 before compilation, and the generated configuration explicitly sets `donate-level` and `donate-over-proxy` to 0. This is a source modification, not an unsupported runtime override. The upstream GPL-3.0 license and copyright notices remain in the source checkout.
+The bundled XMRig executable is built in CI from the pinned upstream v6.26.0 source revision (`b2ca72480c58d197e18c885d9fc1a0c8d517e60a`). CI patches both `src/donate.h` constants (`kDefaultDonateLevel` and `kMinimumDonateLevel`) to 0 before compiling, then strips and checksums the resulting Linux x86_64 binary. The generated MeowKit config also sets `donate-level` and `donate-over-proxy` to 0. This is a source-level zero-donation build, not an unsupported runtime override. The upstream GPL-3.0 license and copyright notices are retained; source remains available from the pinned upstream repository.
 
 The service runs as root (systemd's default when no `User=` is specified). Its `ExecStart` uses `/usr/local/bin/meowkit-xmrig --config=/etc/meowkit/config.json --threads=N`; it does not depend on the installer's `$HOME`, so `/root` versus `/home/USERNAME` does not change the config path. The service requests Tor at boot but does not order miner startup behind Tor's systemd readiness notification. If Tor is late after reboot, XMRig starts and retries through the SOCKS5 proxy instead of blocking VM boot. It never falls back to a direct pool connection.
 
