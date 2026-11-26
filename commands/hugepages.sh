@@ -9,6 +9,24 @@ HP2=/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 HP1=/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
 log(){ printf '[MeowKit hugepages] %s\n' "$*"; }
 
+ACTION=${1:---apply}
+case "$ACTION" in
+  --apply) ;;
+  --restore)
+    if [[ -r $STATE ]]; then
+      source "$STATE"
+      for spec in "$HP1:BASELINE_ONE_GB_PAGES" "$HP2:BASELINE_TWO_MB_PAGES"; do
+        path=${spec%%:*}; key=${spec#*:}; value=${!key:-}
+        [[ $value =~ ^[0-9]+$ && -w $path ]] || continue
+        printf '%s\\n' "$value" > "$path" 2>/dev/null || log "Could not restore $path to its pre-MeowKit value."
+      done
+      log 'Attempted to restore pre-MeowKit huge-page reservations.'
+    fi
+    exit 0
+    ;;
+  *) log "Unknown option: $ACTION"; exit 2 ;;
+esac
+
 RAM_PERCENT=75
 THREADS=1
 HOST_RESERVE_MB=2048
