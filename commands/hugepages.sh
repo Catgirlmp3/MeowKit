@@ -43,18 +43,24 @@ TOTAL_MB=$(awk '/MemTotal:/ {print int($2/1024)}' /proc/meminfo)
 
 GUEST_MB=0
 if command -v qm >/dev/null 2>&1; then
+  QM_OUTPUT=$(qm list 2>/dev/null) || { log 'qm list failed; leaving huge-page reservations unchanged.'; exit 1; }
   while read -r id; do
     [[ $id =~ ^[0-9]+$ ]] || continue
-    memory=$(qm config "$id" 2>/dev/null | awk -F: '$1=="memory"{gsub(/[[:space:]]/,"",$2);print $2;exit}')
-    [[ $memory =~ ^[0-9]+$ ]] && GUEST_MB=$((GUEST_MB + memory))
-  done < <(qm list 2>/dev/null | awk 'NR>1 && $3=="running"{print $1}')
+    config=$(qm config "$id" 2>/dev/null) || { log "Could not read configuration for running VM $id; leaving huge-page reservations unchanged."; exit 1; }
+    memory=$(awk -F: '$1=="memory"{gsub(/[[:space:]]/,"",$2);print $2;exit}' <<<"$config")
+    [[ $memory =~ ^[0-9]+$ ]] || { log "Could not determine RAM for running VM $id; leaving huge-page reservations unchanged."; exit 1; }
+    GUEST_MB=$((GUEST_MB + memory))
+  done < <(awk 'NR>1 && $3=="running"{print $1}' <<<"$QM_OUTPUT")
 fi
 if command -v pct >/dev/null 2>&1; then
+  PCT_OUTPUT=$(pct list 2>/dev/null) || { log 'pct list failed; leaving huge-page reservations unchanged.'; exit 1; }
   while read -r id; do
     [[ $id =~ ^[0-9]+$ ]] || continue
-    memory=$(pct config "$id" 2>/dev/null | awk -F: '$1=="memory"{gsub(/[[:space:]]/,"",$2);print $2;exit}')
-    [[ $memory =~ ^[0-9]+$ ]] && GUEST_MB=$((GUEST_MB + memory))
-  done < <(pct list 2>/dev/null | awk 'NR>1 && $2=="running"{print $1}')
+    config=$(pct config "$id" 2>/dev/null) || { log "Could not read configuration for running container $id; leaving huge-page reservations unchanged."; exit 1; }
+    memory=$(awk -F: '$1=="memory"{gsub(/[[:space:]]/,"",$2);print $2;exit}' <<<"$config")
+    [[ $memory =~ ^[0-9]+$ ]] || { log "Could not determine RAM for running container $id; leaving huge-page reservations unchanged."; exit 1; }
+    GUEST_MB=$((GUEST_MB + memory))
+  done < <(awk 'NR>1 && $2=="running"{print $1}' <<<"$PCT_OUTPUT")
 fi
 
 RESERVE_MB=$((TOTAL_MB / 5))
