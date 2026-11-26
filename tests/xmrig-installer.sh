@@ -68,7 +68,7 @@ setup_case repair
 mkdir -p "$ROOT/vendor/xmrig/linux-x86_64"
 cp "$FIXTURE/meowkit-xmrig" "$ROOT/vendor/xmrig/linux-x86_64/meowkit-xmrig"
 cp "$FIXTURE/SHA256SUMS" "$ROOT/vendor/xmrig/linux-x86_64/SHA256SUMS"
-printf '%s\\n' '#!/usr/bin/env sh' "echo 'XMRig 6.26.0'" > "$MEOWKIT_BIN"
+printf '%s\n' '#!/usr/bin/env sh' "echo 'XMRig 6.26.0'" > "$MEOWKIT_BIN"
 chmod 755 "$MEOWKIT_BIN"
 REPAIR=1
 install_xmrig
